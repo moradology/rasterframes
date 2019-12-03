@@ -623,89 +623,7 @@ class RasterFunctionsSpec extends TestEnvironment with RasterMatchers {
       checkDocs("rf_normalized_difference")
     }
 
-    it("should mask one tile against another") {
-      val df = Seq[Tile](randPRT).toDF("tile")
 
-      val withMask = df.withColumn("mask",
-        rf_convert_cell_type(
-          rf_local_greater($"tile", 50),
-          "uint8")
-      )
-
-      val withMasked = withMask.withColumn("masked",
-        rf_mask($"tile", $"mask"))
-
-      val result = withMasked.agg(rf_agg_no_data_cells($"tile") < rf_agg_no_data_cells($"masked")).as[Boolean]
-
-      result.first() should be(true)
-
-      checkDocs("rf_mask")
-    }
-
-    it("should inverse mask one tile against another") {
-      val df = Seq[Tile](randPRT).toDF("tile")
-
-      val baseND = df.select(rf_agg_no_data_cells($"tile")).first()
-
-      val withMask = df.withColumn("mask",
-        rf_convert_cell_type(
-          rf_local_greater($"tile", 50),
-          "uint8"
-        )
-      )
-
-      val withMasked = withMask
-        .withColumn("masked", rf_mask($"tile", $"mask"))
-        .withColumn("inv_masked", rf_inverse_mask($"tile", $"mask"))
-
-      val result = withMasked.agg(rf_agg_no_data_cells($"masked") + rf_agg_no_data_cells($"inv_masked")).as[Long]
-
-      result.first() should be(tileSize + baseND)
-
-      checkDocs("rf_inverse_mask")
-    }
-
-    it("should mask tile by another identified by specified value") {
-      val df = Seq[Tile](randPRT).toDF("tile")
-      val mask_value = 4
-
-      val withMask = df.withColumn("mask",
-        rf_local_multiply(rf_convert_cell_type(
-          rf_local_greater($"tile", 50),
-          "uint8"),
-          lit(mask_value)
-        )
-      )
-
-      val withMasked = withMask.withColumn("masked",
-        rf_mask_by_value($"tile", $"mask", lit(mask_value)))
-
-      val result = withMasked.agg(rf_agg_no_data_cells($"tile") < rf_agg_no_data_cells($"masked")).as[Boolean]
-
-      result.first() should be(true)
-      checkDocs("rf_mask_by_value")
-    }
-
-    it("should inverse mask tile by another identified by specified value") {
-      val df = Seq[Tile](randPRT).toDF("tile")
-      val mask_value = 4
-
-      val withMask = df.withColumn("mask",
-        rf_local_multiply(rf_convert_cell_type(
-          rf_local_greater($"tile", 50),
-          "uint8"),
-          lit(mask_value)
-        )
-      )
-
-      val withMasked = withMask.withColumn("masked",
-        rf_inverse_mask_by_value($"tile", $"mask", lit(mask_value)))
-
-      val result = withMasked.agg(rf_agg_no_data_cells($"tile") < rf_agg_no_data_cells($"masked")).as[Boolean]
-
-      result.first() should be(true)
-      checkDocs("rf_inverse_mask_by_value")
-    }
 
     it("should render ascii art") {
       val df = Seq[Tile](ProjectedRasterTile(TestData.l8Labels)).toDF("tile")
@@ -854,6 +772,7 @@ class RasterFunctionsSpec extends TestEnvironment with RasterMatchers {
 
     }
   }
+
   it("should resample") {
     def lowRes = {
       def base = ArrayTile(Array(1,2,3,4), 2, 2)
@@ -888,74 +807,77 @@ class RasterFunctionsSpec extends TestEnvironment with RasterMatchers {
     checkDocs("rf_resample")
   }
 
-  it("should create RGB composite") {
-    val red = TestData.l8Sample(4).toProjectedRasterTile
-    val green = TestData.l8Sample(3).toProjectedRasterTile
-    val blue = TestData.l8Sample(2).toProjectedRasterTile
+  describe("create encoded representation of 3 band images") {
 
-    val expected = ArrayMultibandTile(
-      red.rescale(0, 255),
-      green.rescale(0, 255),
-      blue.rescale(0, 255)
-    ).color()
+    it("should create RGB composite") {
+                                        val red = TestData.l8Sample(4).toProjectedRasterTile
+                                        val green = TestData.l8Sample(3).toProjectedRasterTile
+                                        val blue = TestData.l8Sample(2).toProjectedRasterTile
 
-    val df = Seq((red, green, blue)).toDF("red", "green", "blue")
+                                        val expected = ArrayMultibandTile(
+                                        red.rescale(0, 255),
+                                        green.rescale(0, 255),
+                                        blue.rescale(0, 255)
+                                        ).color()
 
-    val expr = df.select(rf_rgb_composite($"red", $"green", $"blue")).as[ProjectedRasterTile]
+                                        val df = Seq((red, green, blue)).toDF("red", "green", "blue")
 
-    val nat_color = expr.first()
+                                        val expr = df.select(rf_rgb_composite($"red", $"green", $"blue")).as[ProjectedRasterTile]
 
-    checkDocs("rf_rgb_composite")
-    assertEqual(nat_color.toArrayTile(), expected)
-  }
+                                        val nat_color = expr.first()
 
-  it("should create an RGB PNG image") {
-    val red = TestData.l8Sample(4).toProjectedRasterTile
-    val green = TestData.l8Sample(3).toProjectedRasterTile
-    val blue = TestData.l8Sample(2).toProjectedRasterTile
+                                        checkDocs("rf_rgb_composite")
+                                        assertEqual(nat_color.toArrayTile(), expected)
+                                        }
 
-    val df = Seq((red, green, blue)).toDF("red", "green", "blue")
+    it("should create an RGB PNG image") {
+                                           val red = TestData.l8Sample(4).toProjectedRasterTile
+                                           val green = TestData.l8Sample(3).toProjectedRasterTile
+                                           val blue = TestData.l8Sample(2).toProjectedRasterTile
 
-    val expr = df.select(rf_render_png($"red", $"green", $"blue"))
+                                           val df = Seq((red, green, blue)).toDF("red", "green", "blue")
 
-    val pngData = expr.first()
+                                           val expr = df.select(rf_render_png($"red", $"green", $"blue"))
 
-    val image = ImageIO.read(new ByteArrayInputStream(pngData))
-    image.getWidth should be(red.cols)
-    image.getHeight should be(red.rows)
-  }
+                                           val pngData = expr.first()
 
-  it("should create a color-ramp PNG image") {
-    val red = TestData.l8Sample(4).toProjectedRasterTile
+                                           val image = ImageIO.read(new ByteArrayInputStream(pngData))
+                                           image.getWidth should be(red.cols)
+                                           image.getHeight should be(red.rows)
+                                           }
 
-    val df = Seq(red).toDF("red")
+    it("should create a color-ramp PNG image") {
+                                                 val red = TestData.l8Sample(4).toProjectedRasterTile
 
-    val expr = df.select(rf_render_png($"red", ColorRamps.HeatmapBlueToYellowToRedSpectrum))
+                                                 val df = Seq(red).toDF("red")
 
-    val pngData = expr.first()
+                                                 val expr = df.select(rf_render_png($"red", ColorRamps.HeatmapBlueToYellowToRedSpectrum))
 
-    val image = ImageIO.read(new ByteArrayInputStream(pngData))
-    image.getWidth should be(red.cols)
-    image.getHeight should be(red.rows)
-  }
-  it("should interpret cell values with a specified cell type") {
-    checkDocs("rf_interpret_cell_type_as")
-    val df = Seq(randNDPRT).toDF("t")
-      .withColumn("tile", rf_interpret_cell_type_as($"t", "int8raw"))
-    val resultTile = df.select("tile").as[Tile].first()
+                                                 val pngData = expr.first()
 
-    resultTile.cellType should be (CellType.fromName("int8raw"))
-    // should have same number of values that are -2 the old ND
-    val countOldNd = df.select(
-      rf_tile_sum(rf_local_equal($"tile", ct.noDataValue)),
-      rf_no_data_cells($"t")
-    ).first()
-    countOldNd._1 should be (countOldNd._2)
+                                                 val image = ImageIO.read(new ByteArrayInputStream(pngData))
+                                                 image.getWidth should be(red.cols)
+                                                 image.getHeight should be(red.rows)
+                                                 }
+    it("should interpret cell values with a specified cell type") {
+      checkDocs("rf_interpret_cell_type_as")
+      val df = Seq(randNDPRT).toDF("t")
+        .withColumn("tile", rf_interpret_cell_type_as($"t", "int8raw"))
+      val resultTile = df.select("tile").as[Tile].first()
 
-    // should not have no data any more (raw type)
-    val countNewNd = df.select(rf_no_data_cells($"tile")).first()
-    countNewNd should be (0L)
+      resultTile.cellType should be (CellType.fromName("int8raw"))
+      // should have same number of values that are -2 the old ND
+      val countOldNd = df.select(
+        rf_tile_sum(rf_local_equal($"tile", ct.noDataValue)),
+        rf_no_data_cells($"t")
+      ).first()
+      countOldNd._1 should be (countOldNd._2)
 
+      // should not have no data any more (raw type)
+      val countNewNd = df.select(rf_no_data_cells($"tile")).first()
+      countNewNd should be (0L)
+
+    }
   }
 
   it("should return local data and nodata"){
@@ -972,4 +894,36 @@ class RasterFunctionsSpec extends TestEnvironment with RasterMatchers {
     val dResult = df.select($"ld").as[Tile].first()
     dResult should be (randNDPRT.localDefined())
   }
+
+
+  it("should check values isin"){
+    checkDocs("rf_local_is_in")
+
+    // tile is 3 by 3 with values, 1 to 9
+    val rf = Seq(byteArrayTile).toDF("t")
+      .withColumn("one", lit(1))
+      .withColumn("five", lit(5))
+      .withColumn("ten", lit(10))
+      .withColumn("in_expect_2", rf_local_is_in($"t", array($"one", $"five")))
+      .withColumn("in_expect_1", rf_local_is_in($"t", array($"ten", $"five")))
+      .withColumn("in_expect_1a", rf_local_is_in($"t", Array(10, 5)))
+      .withColumn("in_expect_0", rf_local_is_in($"t", array($"ten")))
+
+    val e2Result = rf.select(rf_tile_sum($"in_expect_2")).as[Double].first()
+    e2Result should be (2.0)
+
+    val e1Result = rf.select(rf_tile_sum($"in_expect_1")).as[Double].first()
+    e1Result should be (1.0)
+
+    val e1aResult = rf.select(rf_tile_sum($"in_expect_1a")).as[Double].first()
+    e1aResult should be (1.0)
+
+    val e0Result = rf.select($"in_expect_0").as[Tile].first()
+    e0Result.toArray() should contain only (0)
+
+  }
+
+
+
+
 }
