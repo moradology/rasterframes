@@ -116,123 +116,39 @@ class TestTensorUDT(TestEnvironment):
         long_trip = df.first().tens
         self.assertEqual(long_trip, tensor)
 
-    def test_udf_on_tile_type_input(self):
+    def test_udf_on_tensor_type_input(self):
         import numpy.testing
-        df = self.spark.read.raster(self.img_uri)
-        rf = self.rf
 
-        # create trivial UDF that does something we already do with raster_Functions
         @udf('integer')
         def my_udf(t):
-            a = t.cells
+            a = t.ndarray
             return a.size  # same as rf_dimensions.cols * rf_dimensions.rows
 
-        rf_result = rf.select(
-            (rf_dimensions('tile').cols.cast('int') * rf_dimensions('tile').rows.cast('int')).alias('expected'),
-            my_udf('tile').alias('result')).toPandas()
-
-        numpy.testing.assert_array_equal(
-            rf_result.expected.tolist(),
-            rf_result.result.tolist()
-        )
+        i = np.eye(3)
+        tensor = ArrowTensor(i)
+        df = self.spark.createDataFrame([Row(tens=tensor)])
 
         df_result = df.select(
-            (rf_dimensions(df.proj_raster).cols.cast('int') * rf_dimensions(df.proj_raster).rows.cast('int') -
-                my_udf(rf_tile(df.proj_raster))).alias('result')
-        ).toPandas()
+            my_udf('tens').alias('result')).first()
 
-        numpy.testing.assert_array_equal(
-            np.zeros(len(df_result)),
-            df_result.result.tolist()
-        )
+        assert(df_result.result == i.size)
 
-'''
-    def test_udf_on_tile_type_output(self):
+    def test_udf_on_tensor_type_output(self):
         import numpy.testing
 
-        rf = self.rf
-
-        # create a trivial UDF that does something we already do with a raster_functions
-        @udf(TileUDT())
+        @udf(TensorUDT())
         def my_udf(t):
             import numpy as np
-            return Tile(np.log1p(t.cells))
+            return ArrowTensor(np.log1p(t.ndarray))
 
-        rf_result = rf.select(
-            rf_tile_max(
-                rf_local_subtract(
-                    my_udf(rf.tile),
-                    rf_log1p(rf.tile)
-                )
-            ).alias('expect_zeros')
-        ).collect()
+        ones = np.ones([3,4,5])
+        tensor = ArrowTensor(ones)
+        df = self.spark.createDataFrame([Row(tens=tensor)])
 
-        # almost equal because of different implemenations under the hoods: C (numpy) versus Java (rf_)
-        numpy.testing.assert_almost_equal(
-            [r['expect_zeros'] for r in rf_result],
-            [0.0 for _ in rf_result],
-            decimal=6
-        )
+        df_result = df.select(my_udf('tens').alias('result')).first()
 
-    def test_no_data_udf_handling(self):
-        from pyspark.sql.types import StructType, StructField
+        assert(np.array_equal(df_result.result.ndarray, np.log1p(ones)))
 
-        t1 = Tile(np.array([[1, 2], [0, 4]]), CellType.uint8())
-        self.assertEqual(t1.cell_type.to_numpy_dtype(), np.dtype("uint8"))
-        e1 = Tile(np.array([[2, 3], [0, 5]]), CellType.uint8())
-        schema = StructType([StructField("tile", TileUDT(), False)])
-        df = self.spark.createDataFrame([{"tile": t1}], schema)
-
-        @udf(TileUDT())
-        def increment(t):
-            return t + 1
-
-        r1 = df.select(increment(df.tile).alias("inc")).first()["inc"]
-        self.assertEqual(r1, e1)
-
-    def test_udf_np_implicit_type_conversion(self):
-        import math
-        import pandas
-
-        a1 = np.array([[1, 2], [0, 4]])
-        t1 = Tile(a1, CellType.uint8())
-        exp_array = a1.astype('>f8')
-
-        @udf(TileUDT())
-        def times_pi(t):
-            return t * math.pi
-
-        @udf(TileUDT())
-        def divide_pi(t):
-            return t / math.pi
-
-        @udf(TileUDT())
-        def plus_pi(t):
-            return t + math.pi
-
-        @udf(TileUDT())
-        def less_pi(t):
-            return t - math.pi
-
-        df = self.spark.createDataFrame(pandas.DataFrame([{"tile": t1}]))
-        r1 = df.select(
-            less_pi(divide_pi(times_pi(plus_pi(df.tile))))
-        ).first()[0]
-
-        self.assertTrue(np.all(r1.cells == exp_array))
-        self.assertEqual(r1.cells.dtype, exp_array.dtype)
-
-    def test_pandas_udf(self):
-        from pyspark.sql.functions import pandas_udf, PandasUDFType
-
-        @pandas_udf('double', PandasUDFType.SCALAR)
-        def tile_mean(cells):
-            # `cells` is a Pandas `Series`.
-            return cells.apply(np.mean)
-
-        df = self.rf.select(tile_mean(self.rf.tile).alias('pandas_udf_mean'))
-        df.show(truncate=False)
-'''
 
 class UDT(TestEnvironment):
 

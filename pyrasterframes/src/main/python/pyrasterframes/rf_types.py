@@ -459,6 +459,7 @@ class TileUDT(UserDefinedType):
             }, e)
         return t
 
+    deserialize.__safe_for_unpickling__ = True
 
 Tile.__UDT__ = TileUDT()
 
@@ -481,32 +482,6 @@ class NoDataFilter(JavaTransformer, HasInputCols, DefaultParamsReadable, Default
     def __init__(self):
         super(NoDataFilter, self).__init__()
         self._java_obj = self._new_java_obj("org.locationtech.rasterframes.ml.NoDataFilter", self.uid)
-
-
-class RasterSourceUDT(UserDefinedType):
-    @classmethod
-    def sqlType(cls):
-        return StructType([
-            StructField("raster_source_kryo", BinaryType(), False)])
-
-    @classmethod
-    def module(cls):
-        return 'pyrasterframes.rf_types'
-
-    @classmethod
-    def scalaUDT(cls):
-        return 'org.apache.spark.sql.rf.RasterSourceUDT'
-
-    def needConversion(self):
-        return False
-
-    # The contents of a RasterSource is opaque in the Python context.
-    # Just pass data through unmodified.
-    def serialize(self, obj):
-        return obj
-
-    def deserialize(self, datum):
-        return datum
 
 
 class TensorUDT(UserDefinedType):
@@ -536,8 +511,6 @@ class TensorUDT(UserDefinedType):
         tensor = pa.read_tensor(br)
         ndarray = tensor.to_numpy()
         return ArrowTensor(ndarray)
-
-    #deserialize.__safe_for_unpickling__ = True
 
 
 class ArrowTensor(object):
