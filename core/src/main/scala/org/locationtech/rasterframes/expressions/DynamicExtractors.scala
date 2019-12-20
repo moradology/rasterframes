@@ -22,12 +22,12 @@
 package org.locationtech.rasterframes.expressions
 
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellGrid, Tile}
+import geotrellis.raster.{CellGrid, Tile, ArrowTensor}
 import geotrellis.vector.Extent
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.jts.JTSTypes
-import org.apache.spark.sql.rf.{RasterSourceUDT, TileUDT}
+import org.apache.spark.sql.rf.{RasterSourceUDT, TensorUDT, TileUDT}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 import org.locationtech.jts.geom.{Envelope, Point}
@@ -82,6 +82,8 @@ object DynamicExtractors {
   lazy val gridExtractor: PartialFunction[DataType, InternalRow ⇒ CellGrid] = {
     case _: TileUDT =>
       (row: InternalRow) => row.to[Tile](TileUDT.tileSerializer)
+    case _: TensorUDT =>
+      (row: InternalRow) => row.to[ArrowTensor](TensorUDT.tensorSerializer)
     case _: RasterSourceUDT =>
       (row: InternalRow) => row.to[RasterSource](RasterSourceUDT.rasterSourceSerializer)
     case t if t.conformsTo[RasterRef] ⇒

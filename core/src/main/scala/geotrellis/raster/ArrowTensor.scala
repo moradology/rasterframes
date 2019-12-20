@@ -15,8 +15,11 @@ import org.apache.arrow.vector.{Float8Vector, VectorSchemaRoot}
 
 import scala.collection.JavaConverters._
 
-case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) {
+case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends CellGrid {
   // TODO: Should we be using ArrowBuf here directly, since Arrow Tensor can not have pages?
+  def rows = shape(1)
+  def cols = shape(2)
+  val cellType = DoubleCellType
 
   /** Write Tensor to buffer, return offset of Tensor object in that buffer */
   def writeTensor(bufferBuilder: FlatBufferBuilder): Int = {
