@@ -145,8 +145,8 @@ object ArrowTensor {
     new ArrowTensor(vec, shape.toArray)
   }
 
-  def fill(v: Double, shape: Int*)(implicit alloc: BufferAllocator): ArrowTensor = {
-    val vec = new Float8Vector("array", alloc)
+  def fill(v: Double, shape: Int*): ArrowTensor = {
+    val vec = new Float8Vector("array", allocator)
     val shp = shape.toSeq
     val n = shp.product
     vec.allocateNew(n)
