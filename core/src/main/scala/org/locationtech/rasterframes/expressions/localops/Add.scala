@@ -48,9 +48,8 @@ case class Add(left: Expression, right: Expression) extends BinaryLocalRasterOp
   override val nodeName: String = "rf_local_add"
 
 
-  override protected def op(left: ArrowTensor, right: ArrowTensor): ArrowTensor = {
-    left.zipWith(right)(_ + _)
-  }
+  override protected def op(left: ArrowTensor, right: ArrowTensor): ArrowTensor = left.zipWith(right)(_ + _)
+  override protected def op(left: ArrowTensor, right: Double): ArrowTensor = left.map(_ + right)
   override protected def op(left: Tile, right: Tile): Tile = left.localAdd(right)
   override protected def op(left: Tile, right: Double): Tile = left.localAdd(right)
   override protected def op(left: Tile, right: Int): Tile = left.localAdd(right)

@@ -66,10 +66,9 @@ case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends Ce
   def writeTensor(bufferBuilder: FlatBufferBuilder): Int = {
     val elementSize = 8
 
-    // TODO: make work for more than 2 dimensions
-    // Array[Long](shape(0) * elementSize, elementSize)
+    // note the following relies on the data being Double
     val strides: Array[Long] = {
-      shape.reverse.map(_.toLong).toArray
+      shape.tails.toSeq.tail.map(_.product.toLong * 8L).toArray
     }
 
     val shapeOffset: Int = {
@@ -89,7 +88,7 @@ case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends Ce
 
     val stridesOffset = Tensor.createStridesVector(bufferBuilder, strides)
     Tensor.startTensor(bufferBuilder)
-    Tensor.addTypeType(bufferBuilder, Type.Int)
+    Tensor.addTypeType(bufferBuilder, Type.FloatingPoint)
     // pa.read_tensor also wants type, ND4j does not write this because it I'm guessing its not written to python
     Tensor.addType(bufferBuilder, typeOffset)
     Tensor.addShape(bufferBuilder, shapeOffset)
