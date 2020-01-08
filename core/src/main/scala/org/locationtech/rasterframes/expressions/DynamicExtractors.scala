@@ -143,7 +143,6 @@ object DynamicExtractors {
     extentExtractor.andThen(_.andThen(_.center.jtsGeom))
   }
 
-  sealed trait TileOrNumberArg
   sealed trait TensorTileOrNumberArg
   sealed trait TileOrNumberArg extends TensorTileOrNumberArg
   sealed trait NumberArg extends TileOrNumberArg
