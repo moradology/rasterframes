@@ -509,7 +509,7 @@ class TensorUDT(UserDefinedType):
     def deserialize(self, datum):
         br = pa.BufferReader(datum.arrow_tensor)
         tensor = pa.read_tensor(br)
-        ndarray = tensor.to_numpy(dtype='float64')
+        ndarray = tensor.to_numpy()
         return ArrowTensor(ndarray)
 
 

@@ -62,6 +62,50 @@ case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends Ce
     ArrowTensor(result, shape)
   }
 
+  def zipBands(other: Tile)(fn: (Double, Double) => Double): ArrowTensor = {
+    if (other.rows != rows || other.cols != cols)
+      throw new IllegalArgumentException(s"Cannot zip; tile and tensor have incompatible dimension: Tensor shape ${shape.mkString("×")}, tile shape 1×${other.rows}×${other.cols}")
+
+    val n = vector.getValueCount
+    val result = new Float8Vector("array", ArrowTensor.allocator)
+    result.allocateNew(n)
+    result.setValueCount(n)
+
+    var i = 0
+    cfor(0)(_ < rows, _ + 1){ r =>
+      cfor(0)(_ < cols, _ + 1){ c =>
+        if (vector.isNull(i) || isNoData(other.getDouble(c, r)))
+          result.setNull(i)
+        else
+          result.set(i, fn(vector.get(i), other.getDouble(c, r)))
+        i += 1
+      }
+    }
+    ArrowTensor(result, shape)
+  }
+
+  def sliceBands(bands: Seq[Int]): ArrowTensor = {
+    assert(bands.forall{ b => b >= 0 && b < shape(0) }, s"Encountered band outside range 0 to ${shape(0)} in $bands")
+
+    val newSize = rows * cols * bands.length
+    val result = new Float8Vector("array", ArrowTensor.allocator)
+    result.allocateNew(newSize)
+    result.setValueCount(newSize)
+
+    var pos = 0
+    for ( b <- bands ) {
+      cfor(b * rows * cols)(_ < (b + 1) * rows * cols, _ + 1) { i =>
+        if (vector.isNull(i))
+          result.setNull(pos)
+        else
+          result.set(pos, vector.get(i))
+        pos += 1
+      }
+    }
+
+    ArrowTensor(result, Seq(bands.length, rows, cols))
+  }
+
   /** Write Tensor to buffer, return offset of Tensor object in that buffer */
   def writeTensor(bufferBuilder: FlatBufferBuilder): Int = {
     val elementSize = 8
@@ -181,5 +225,33 @@ object ArrowTensor {
     for (i <- 0 until tensorSize) vec.set(i, Float8Vector.get(arrowBuf, i))
 
     new ArrowTensor(vec, shape)
+  }
+
+  def stackTensors(others: Seq[ArrowTensor]): ArrowTensor = {
+    assert(others.size > 0, "Cannot stack an empty set of tensors!")
+    assert(others.map(_.rows).toSet.size == 1 && others.map(_.cols).toSet.size == 1,
+           "All tensors must have equal number of rows and columns!")
+
+    val rows = others.head.rows
+    val cols = others.head.cols
+    val bands = others.map(_.shape(0)).sum
+    val newSize = rows * cols * bands
+
+    val result = new Float8Vector("array", allocator)
+    result.allocateNew(newSize)
+    result.setValueCount(newSize)
+
+    var pos = 0
+    for (other <- others) {
+      cfor(0)(_ < other.vector.getValueCount, _ + 1) { i =>
+        if (other.vector.isNull(i))
+          result.setNull(pos)
+        else
+          result.set(pos, other.vector.get(i))
+        pos += 1
+      }
+    }
+
+    ArrowTensor(result, Seq(bands, rows, cols))
   }
 }

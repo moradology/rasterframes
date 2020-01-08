@@ -29,7 +29,7 @@ import org.apache.spark.annotation.Experimental
 import org.apache.spark.sql.functions.{lit, udf}
 import org.apache.spark.sql.{Column, TypedColumn}
 import org.locationtech.jts.geom.Geometry
-import org.locationtech.rasterframes.expressions.TileAssembler
+import org.locationtech.rasterframes.expressions.{StackTensors, TileAssembler}
 import org.locationtech.rasterframes.expressions.accessors._
 import org.locationtech.rasterframes.expressions.aggregates._
 import org.locationtech.rasterframes.expressions.generators._
@@ -556,4 +556,8 @@ trait RasterFunctions {
   /** Create a row for each cell in Tile with random sampling (no seed). */
   def rf_explode_tiles_sample(sampleFraction: Double, cols: Column*): Column =
     ExplodeTiles(sampleFraction, None, cols)
+
+  /* TENSOR FUNCTIONS --------------------------------------------------*/
+
+  def rf_stack_tensors(cols: Column*): Column = StackTensors(cols)
 }
