@@ -21,7 +21,7 @@
 
 package org.locationtech.rasterframes.expressions.localops
 
-import geotrellis.raster.Tile
+import geotrellis.raster.{ArrowTensor, Tile}
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback
@@ -46,6 +46,11 @@ import org.locationtech.rasterframes.expressions.DynamicExtractors.tileExtractor
 case class Add(left: Expression, right: Expression) extends BinaryLocalRasterOp
   with CodegenFallback {
   override val nodeName: String = "rf_local_add"
+
+
+  override protected def op(left: ArrowTensor, right: ArrowTensor): ArrowTensor = left.zipWith(right)(_ + _)
+  override protected def op(left: ArrowTensor, right: Tile): ArrowTensor = left.zipBands(right)(_ + _)
+  override protected def op(left: ArrowTensor, right: Double): ArrowTensor = left.map(_ + right)
   override protected def op(left: Tile, right: Tile): Tile = left.localAdd(right)
   override protected def op(left: Tile, right: Double): Tile = left.localAdd(right)
   override protected def op(left: Tile, right: Int): Tile = left.localAdd(right)

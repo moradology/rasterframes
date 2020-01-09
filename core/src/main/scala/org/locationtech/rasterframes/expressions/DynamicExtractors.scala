@@ -22,12 +22,12 @@
 package org.locationtech.rasterframes.expressions
 
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellGrid, Tile}
+import geotrellis.raster.{CellGrid, Tile, ArrowTensor}
 import geotrellis.vector.Extent
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.jts.JTSTypes
-import org.apache.spark.sql.rf.{RasterSourceUDT, TileUDT}
+import org.apache.spark.sql.rf.{RasterSourceUDT, TensorUDT, TileUDT}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 import org.locationtech.jts.geom.{Envelope, Point}
@@ -38,6 +38,18 @@ import org.locationtech.rasterframes.tiles.ProjectedRasterTile
 
 private[rasterframes]
 object DynamicExtractors {
+  lazy val tensorExtractor: PartialFunction[DataType, InternalRow => (ArrowTensor, Option[TileContext])] = {
+    case _: TensorUDT =>
+      (row: InternalRow) =>
+        (row.to[ArrowTensor](TensorUDT.tensorSerializer), None)
+    // We could use something like the following to associate a projection with a Tensor
+    // case t if t.conformsTo[ProjectedRasterTile] =>
+    //   (row: InternalRow) => {
+    //     val prt = row.to[ProjectedRasterTile]
+    //     (prt, Some(TileContext(prt)))
+    //   }
+  }
+
   /** Partial function for pulling a tile and its context from an input row. */
   lazy val tileExtractor: PartialFunction[DataType, InternalRow => (Tile, Option[TileContext])] = {
     case _: TileUDT =>
@@ -82,6 +94,8 @@ object DynamicExtractors {
   lazy val gridExtractor: PartialFunction[DataType, InternalRow ⇒ CellGrid] = {
     case _: TileUDT =>
       (row: InternalRow) => row.to[Tile](TileUDT.tileSerializer)
+    case _: TensorUDT =>
+      (row: InternalRow) => row.to[ArrowTensor](TensorUDT.tensorSerializer)
     case _: RasterSourceUDT =>
       (row: InternalRow) => row.to[RasterSource](RasterSourceUDT.rasterSourceSerializer)
     case t if t.conformsTo[RasterRef] ⇒
@@ -129,14 +143,30 @@ object DynamicExtractors {
     extentExtractor.andThen(_.andThen(_.center.jtsGeom))
   }
 
-  sealed trait TileOrNumberArg
+  sealed trait TensorTileOrNumberArg
+  sealed trait TileOrNumberArg extends TensorTileOrNumberArg
   sealed trait NumberArg extends TileOrNumberArg
+  case class TensorArg(tensor: ArrowTensor, ctx: Option[TileContext]) extends TensorTileOrNumberArg
   case class TileArg(tile: Tile, ctx: Option[TileContext]) extends TileOrNumberArg
   case class DoubleArg(value: Double) extends NumberArg
   case class IntegerArg(value: Int) extends NumberArg
 
+  lazy val tensorOrTileExtractor: PartialFunction[DataType, Any => TensorTileOrNumberArg] =
+    tensorArgExtractor.orElse(tileArgExtractor)
+
+  lazy val tensorTileOrNumberExtractor: PartialFunction[DataType, Any => TensorTileOrNumberArg] =
+    tensorArgExtractor.orElse(tileOrNumberExtractor)
+
   lazy val tileOrNumberExtractor: PartialFunction[DataType, Any => TileOrNumberArg] =
     tileArgExtractor.orElse(numberArgExtractor)
+
+  lazy val tensorArgExtractor: PartialFunction[DataType, Any => TensorArg] = {
+    case t if tensorExtractor.isDefinedAt(t) ⇒ {
+      case ir: InternalRow ⇒
+        val (tens, ctx) = tensorExtractor(t)(ir)
+        TensorArg(tens, ctx)
+    }
+  }
 
   lazy val tileArgExtractor: PartialFunction[DataType, Any => TileArg] = {
     case t if tileExtractor.isDefinedAt(t) => {

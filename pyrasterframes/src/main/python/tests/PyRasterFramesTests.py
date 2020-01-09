@@ -23,7 +23,7 @@ import unittest
 import numpy as np
 from pyrasterframes.rasterfunctions import *
 from pyrasterframes.rf_types import *
-from pyspark.sql import SQLContext
+from pyspark.sql import SQLContext, Row
 from pyspark.sql.functions import *
 from pyspark.sql import Row
 
@@ -98,6 +98,56 @@ class CellTypeHandling(unittest.TestCase):
                                  repr(CellType.from_numpy_dtype(ct_ud.to_numpy_dtype())),
                                  "GTCellType comparison for " + str(ct_ud)
                                  )
+
+
+class TestTensorUDT(TestEnvironment):
+
+    def test_tensor_udt_serialization(self):
+        from pyspark.sql.types import StructType, StructField
+
+        ndarray = (100 + np.random.randn(10, 10, 10) * 100).astype(np.dtype('float64'))
+        tensor = ArrowTensor(ndarray)
+
+        udt = TensorUDT()
+        round_trip = udt.fromInternal(udt.toInternal(tensor))
+        self.assertEqual(tensor, round_trip, "round-trip serialization")
+
+        df = self.spark.createDataFrame([Row(tens=tensor)])
+        long_trip = df.first().tens
+        self.assertEqual(long_trip, tensor)
+
+    def test_udf_on_tensor_type_input(self):
+        import numpy.testing
+
+        @udf('integer')
+        def my_udf(t):
+            a = t.ndarray
+            return a.size  # same as rf_dimensions.cols * rf_dimensions.rows
+
+        i = np.eye(3)
+        tensor = ArrowTensor(i)
+        df = self.spark.createDataFrame([Row(tens=tensor)])
+
+        df_result = df.select(
+            my_udf('tens').alias('result')).first()
+
+        assert(df_result.result == i.size)
+
+    def test_udf_on_tensor_type_output(self):
+        import numpy.testing
+
+        @udf(TensorUDT())
+        def my_udf(t):
+            import numpy as np
+            return ArrowTensor(np.log1p(t.ndarray))
+
+        ones = np.ones([3,4,5])
+        tensor = ArrowTensor(ones)
+        df = self.spark.createDataFrame([Row(tens=tensor)])
+
+        df_result = df.select(my_udf('tens').alias('result')).first()
+
+        assert(np.array_equal(df_result.result.ndarray, np.log1p(ones)))
 
 
 class UDT(TestEnvironment):
@@ -262,6 +312,16 @@ class UDT(TestEnvironment):
         self.assertTrue(np.all(r1.cells == exp_array))
         self.assertEqual(r1.cells.dtype, exp_array.dtype)
 
+    def test_pandas_udf(self):
+        from pyspark.sql.functions import pandas_udf, PandasUDFType
+
+        @pandas_udf('double', PandasUDFType.SCALAR)
+        def tile_mean(cells):
+            # `cells` is a Pandas `Series`.
+            return cells.apply(np.mean)
+
+        df = self.rf.select(tile_mean(self.rf.tile).alias('pandas_udf_mean'))
+        df.show(truncate=False)
 
 class TileOps(TestEnvironment):
 

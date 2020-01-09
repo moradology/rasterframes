@@ -23,7 +23,7 @@ package org.locationtech.rasterframes.expressions.accessors
 
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.OnCellGridExpression
-import geotrellis.raster.CellGrid
+import geotrellis.raster.{ArrowTensor, CellGrid}
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback

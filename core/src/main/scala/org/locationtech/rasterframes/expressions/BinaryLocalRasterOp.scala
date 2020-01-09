@@ -22,11 +22,11 @@
 package org.locationtech.rasterframes.expressions
 
 import com.typesafe.scalalogging.Logger
-import geotrellis.raster.Tile
+import geotrellis.raster.{ArrowTensor, Tile}
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult.{TypeCheckFailure, TypeCheckSuccess}
 import org.apache.spark.sql.catalyst.expressions.BinaryExpression
-import org.apache.spark.sql.rf.TileUDT
+import org.apache.spark.sql.rf.{TileUDT, TensorUDT}
 import org.apache.spark.sql.types.DataType
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.DynamicExtractors._
@@ -41,10 +41,10 @@ trait BinaryLocalRasterOp extends BinaryExpression {
   override def dataType: DataType = left.dataType
 
   override def checkInputDataTypes(): TypeCheckResult = {
-    if (!tileExtractor.isDefinedAt(left.dataType)) {
+    if (!tensorOrTileExtractor.isDefinedAt(left.dataType)) {
       TypeCheckFailure(s"Input type '${left.dataType}' does not conform to a raster type.")
     }
-    else if (!tileOrNumberExtractor.isDefinedAt(right.dataType)) {
+    else if (!tensorTileOrNumberExtractor.isDefinedAt(right.dataType)) {
       TypeCheckFailure(s"Input type '${right.dataType}' does not conform to a compatible type.")
     }
     else TypeCheckSuccess
@@ -52,9 +52,31 @@ trait BinaryLocalRasterOp extends BinaryExpression {
 
   override protected def nullSafeEval(input1: Any, input2: Any): Any = {
     implicit val tileSer = TileUDT.tileSerializer
-    val (leftTile, leftCtx) = tileExtractor(left.dataType)(row(input1))
-    val result = tileOrNumberExtractor(right.dataType)(input2) match {
-       case TileArg(rightTile, rightCtx) =>
+    implicit val tensorSer = TensorUDT.tensorSerializer
+    val (result, isTensor, context) = (tensorOrTileExtractor(left.dataType)(row(input1)), tensorTileOrNumberExtractor(right.dataType)(input2)) match {
+      case (TensorArg(leftTensor, leftCtx), TensorArg(rightTensor, rightCtx)) ⇒
+        if (leftCtx.isEmpty && rightCtx.isDefined)
+          logger.warn(
+            s"Right-hand parameter '${right}' provided an extent and CRS, but the left-hand parameter " +
+              s"'${left}' didn't have any. Because the left-hand side defines output type, the right-hand context will be lost.")
+
+        if(leftCtx.isDefined && rightCtx.isDefined && leftCtx != rightCtx)
+          logger.warn(s"Both '${left}' and '${right}' provided an extent and CRS, but they are different. Left-hand side will be used.")
+
+        (op(leftTensor, rightTensor), true, leftCtx)
+      case (TensorArg(leftTensor, leftCtx), TileArg(rightTile, rightCtx)) ⇒
+        if (leftCtx.isEmpty && rightCtx.isDefined)
+          logger.warn(
+            s"Right-hand parameter '${right}' provided an extent and CRS, but the left-hand parameter " +
+              s"'${left}' didn't have any. Because the left-hand side defines output type, the right-hand context will be lost.")
+
+        if(leftCtx.isDefined && rightCtx.isDefined && leftCtx != rightCtx)
+          logger.warn(s"Both '${left}' and '${right}' provided an extent and CRS, but they are different. Left-hand side will be used.")
+
+        (op(leftTensor, rightTile), true, leftCtx)
+      case (TensorArg(leftTensor, leftCtx), DoubleArg(d)) ⇒ (op(leftTensor, d), true, leftCtx)
+      case (TensorArg(leftTensor, leftCtx), IntegerArg(i)) ⇒ (op(leftTensor, i.toDouble), true, leftCtx)
+      case (TileArg(leftTile, leftCtx), TileArg(rightTile, rightCtx)) =>
          if (leftCtx.isEmpty && rightCtx.isDefined)
            logger.warn(
              s"Right-hand parameter '${right}' provided an extent and CRS, but the left-hand parameter " +
@@ -63,20 +85,25 @@ trait BinaryLocalRasterOp extends BinaryExpression {
          if(leftCtx.isDefined && rightCtx.isDefined && leftCtx != rightCtx)
            logger.warn(s"Both '${left}' and '${right}' provided an extent and CRS, but they are different. Left-hand side will be used.")
 
-         op(leftTile, rightTile)
-       case DoubleArg(d) => op(fpTile(leftTile), d)
-       case IntegerArg(i) => op(leftTile, i)
+         (op(leftTile, rightTile), false, leftCtx)
+      case (TileArg(leftTile, leftCtx), DoubleArg(d)) => (op(fpTile(leftTile), d), false, leftCtx)
+      case (TileArg(leftTile, leftCtx), IntegerArg(i)) => (op(leftTile, i), false, leftCtx)
+      case arg ⇒ throw new UnsupportedOperationException(s"Tried to combine $arg.  Higher rank argument must be on the left-hand side.")
     }
 
-    leftCtx match {
-      case Some(ctx) => ctx.toProjectRasterTile(result).toInternalRow
-      case None => result.toInternalRow
+    (context, isTensor) match {
+      case (Some(ctx), true) ⇒ result.asInstanceOf[ArrowTensor].toInternalRow
+      case (Some(ctx), false) ⇒ ctx.toProjectRasterTile(result.asInstanceOf[Tile]).toInternalRow
+      case (None, true) ⇒ result.asInstanceOf[ArrowTensor].toInternalRow
+      case (None, false) ⇒ result.asInstanceOf[Tile].toInternalRow
     }
   }
 
-
+  protected def op(left: ArrowTensor, right: ArrowTensor): ArrowTensor = throw new UnsupportedOperationException("Tensor × Tensor operation implementation not defined")
+  protected def op(left: ArrowTensor, right: Tile): ArrowTensor = throw new UnsupportedOperationException("Tensor × Tile operation implementation not defined")
+  protected def op(left: ArrowTensor, right: Double): ArrowTensor = throw new UnsupportedOperationException("Tensor × Scalar operation implementation not defined")
+  // protected def op(left: Tensor, right: Int): Tensor // omitted since tensors are floating point only for now
   protected def op(left: Tile, right: Tile): Tile
   protected def op(left: Tile, right: Double): Tile
   protected def op(left: Tile, right: Int): Tile
 }
-
