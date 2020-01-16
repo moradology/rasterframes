@@ -529,3 +529,101 @@ class ArrowTensor(object):
             np.array_equal(self.ndarray, other.ndarray)
 
 ArrowTensor.__UDT__ = TensorUDT()
+
+class BufferedTensorUDT(UserDefinedType):
+    @classmethod
+    def sqlType(cls):
+        return StructType([
+            StructField("arrow_tensor", BinaryType(), False),
+            StructField("extent", StructType([
+                StructField("xmin", DoubleType(), False),
+                StructField("ymin", DoubleType(), False),
+                StructField("xmax", DoubleType(), False),
+                StructField("ymax", DoubleType(), False)
+            ]), True),
+            StructField("x_buffer", IntegerType(), False),
+            StructField("y_buffer", IntegerType(), False),
+        ])
+
+    @classmethod
+    def module(cls):
+        return 'pyrasterframes.rf_types'
+
+    @classmethod
+    def scalaUDT(cls):
+        return 'org.apache.spark.sql.rf.BufferedTensorUDT'
+
+    def serialize(self, obj):
+        tensor = pa.Tensor.from_numpy(obj.ndarray)
+        bos = pa.BufferOutputStream()
+        pa.write_tensor(tensor, bos)
+        buffer = bos.getvalue()
+        return [
+            buffer.to_pybytes(),
+            [
+                [obj.extent['xmin']],
+                [obj.extent['ymin']],
+                [obj.extent['xmax']],
+                [obj.extent['ymax']]
+            ] if obj.extent else None,
+            obj.buffer_cols,
+            obj.buffer_rows
+        ]
+
+    def deserialize(self, datum):
+        print("deserializing {}".format(datum))
+        br = pa.BufferReader(datum.arrow_tensor)
+        tensor = pa.read_tensor(br)
+        ndarray = tensor.to_numpy()
+        return BufferedTensor(ndarray, datum.y_buffer, datum.x_buffer, {'xmin': datum.extent.xmin, 'ymin': datum.extent.ymin, 'xmax': datum.extent.xmax, 'ymax': datum.extent.ymax} if datum.extent else None)
+
+
+class BufferedTensor(object):
+
+    def __init__(self, ndarray, buffer_rows, buffer_cols=None, extent=None):
+        assert(len(ndarray.shape) == 3)
+        self.ndarray = ndarray
+        self.extent = extent
+        self.buffer_rows = buffer_rows
+        self.buffer_cols = buffer_cols if buffer_cols else buffer_rows
+
+    def __repr__(self):
+        return "BufferedTensor of shape {} {}and buffer of size {}×{} pixels".format(self.ndarray.shape, "with extent {} ".format(self.extent) if self.extent else "", self.buffer_rows, self.buffer_cols)
+
+    def __str__(self):
+        return "{}\nwith buffer of {}×{} pixels".format(self.ndarray, self.buffer_rows, self.buffer_cols)
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and \
+            np.array_equal(self.ndarray, other.ndarray) and \
+            self.buffer_rows == other.buffer_rows and \
+            self.buffer_cols == other.buffer_cols and \
+            self.extent == self.extent
+
+    def convolve(self, mask):
+        from scipy import signal
+
+        filter_rank = len(mask.shape)
+        if filter_rank < 2 or filter_rank > 3:
+            raise ValueError("Convolution only works for 2- or 3-d masks")
+
+        if filter_rank == 2:
+            # Bandwise convolution
+            if mask.shape[0] % 2 == 0 or mask.shape[1] % 2 == 0:
+                raise ValueError("Convolution on buffered tiles requires odd mask dimensions")
+
+            filtered = np.stack([signal.convolve(self.ndarray[band,:,:], mask, mode='valid') for band in range(self.ndarray.shape[0])])
+            new_buffer_rows = self.buffer_rows - (mask.shape[0] - 1) / 2
+            new_buffer_cols = self.buffer_cols - (mask.shape[1] - 1) / 2
+        else:
+            # Expert mode volume convolution (changes number of bands)
+            if mask.shape[1] % 2 == 0 or mask.shape[2] % 2 == 0:
+                raise ValueError("Convolution on buffered tiles requires odd mask row × col dimensions")
+
+            filtered = signal.convolve(self.ndarray, mask, mode='valid')
+            new_buffer_rows = self.buffer_rows - (mask.shape[1] - 1) / 2
+            new_buffer_cols = self.buffer_cols - (mask.shape[2] - 1) / 2
+
+        return BufferedTensor(filtered, new_buffer_rows, new_buffer_cols, self.extent)
+
+BufferedTensor.__UDT__ = BufferedTensorUDT()
