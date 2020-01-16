@@ -611,6 +611,8 @@ class BufferedTensor(object):
             # Bandwise convolution
             if mask.shape[0] % 2 == 0 or mask.shape[1] % 2 == 0:
                 raise ValueError("Convolution on buffered tiles requires odd mask dimensions")
+            if self.buffer_rows < (mask.shape[0] - 1) / 2 or self.buffer_cols <- (mask.shape[1] - 1) / 2:
+                raise ValueError("Tensor has insufficient buffer for convolution operation")
 
             filtered = np.stack([signal.convolve(self.ndarray[band,:,:], mask, mode='valid') for band in range(self.ndarray.shape[0])])
             new_buffer_rows = self.buffer_rows - (mask.shape[0] - 1) / 2
@@ -619,6 +621,8 @@ class BufferedTensor(object):
             # Expert mode volume convolution (changes number of bands)
             if mask.shape[1] % 2 == 0 or mask.shape[2] % 2 == 0:
                 raise ValueError("Convolution on buffered tiles requires odd mask row × col dimensions")
+            if self.buffer_rows < (mask.shape[1] - 1) / 2 or self.buffer_cols <- (mask.shape[2] - 1) / 2:
+                raise ValueError("Tensor has insufficient buffer for convolution operation")
 
             filtered = signal.convolve(self.ndarray, mask, mode='valid')
             new_buffer_rows = self.buffer_rows - (mask.shape[1] - 1) / 2
