@@ -164,6 +164,23 @@ case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends Ce
     bout.toByteArray
   }
 
+  def show: Unit = {
+    var i = 0
+    var accum = ""
+    val formatting = "% 1.2f"
+    cfor(0)(_ < shape(0), _ + 1){b =>
+      cfor(0)(_ < rows, _ + 1){ r =>
+        cfor(0)(_ < cols, _ + 1){ c =>
+          accum = accum + s"${formatting.format(vector.get(i))} "
+          i += 1
+        }
+        accum = accum + "\n"
+      }
+      accum = accum + "\n"
+    }
+    print(accum)
+  }
+
 }
 
 object ArrowTensor {
