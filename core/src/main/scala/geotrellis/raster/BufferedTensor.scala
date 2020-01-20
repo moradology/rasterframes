@@ -62,8 +62,47 @@ case class BufferedTensor(val tile: ArrowTensor, val bufferRows: Int, val buffer
     cfor(0)(_ < bands, _ + 1){ band =>
       cfor(0)(_ < newRows, _ + 1){ r =>
         cfor(0)(_ < newCols, _ + 1){ c =>
-          val thisIdx = (r + thisRowOfs) + c + thisColOfs
-          val otherIdx = (r + otherRowOfs) + c + otherColOfs
+          val thisIdx = band * (bufferedRows * bufferedCols) + (r + thisRowOfs) * bufferedCols + c + thisColOfs
+          val otherIdx = band * (other.bufferedRows * other.bufferedCols) + (r + otherRowOfs) * other.bufferedCols + c + otherColOfs
+
+          if (tile.vector.isNull(thisIdx) || other.tile.vector.isNull(otherIdx))
+            result.setNull(i)
+          else
+            result.set(i, fn(tile.vector.get(thisIdx), other.tile.vector.get(otherIdx)))
+
+          i += 1
+        }
+      }
+    }
+
+    BufferedTensor(ArrowTensor(result, Seq(bands, newRows, newCols)), newBufRows, newBufCols, extent)
+  }
+
+  def zipBands(other: BufferedTensor)(fn: (Double, Double) => Double): BufferedTensor = {
+    if ((cols, rows) != (other.cols, other.rows))
+      throw new IllegalArgumentException(s"Cannot zip bands from tensors of differing sizes.  Base is ${shape.mkString("×")}, mask is ${other.shape.mkString("×")}")
+
+    val newBufRows = math.min(bufferRows, other.bufferRows)
+    val newBufCols = math.min(bufferCols, other.bufferCols)
+    val newRows = rows + 2 * newBufRows
+    val newCols = cols + 2 * newBufCols
+
+    val thisRowOfs = bufferRows - newBufRows
+    val thisColOfs = bufferCols - newBufCols
+    val otherRowOfs = other.bufferRows - newBufRows
+    val otherColOfs = other.bufferCols - newBufCols
+
+    val n = newRows * newCols * bands
+    val result = new Float8Vector("array", ArrowTensor.allocator)
+    result.allocateNew(n)
+    result.setValueCount(n)
+
+    var i = 0
+    cfor(0)(_ < bands, _ + 1){ band =>
+      cfor(0)(_ < newRows, _ + 1){ r =>
+        cfor(0)(_ < newCols, _ + 1){ c =>
+          val thisIdx = band * (bufferedRows * bufferedCols) + (r + thisRowOfs) * bufferedCols + c + thisColOfs
+          val otherIdx = (r + otherRowOfs) * other.bufferedCols + c + otherColOfs
 
           if (tile.vector.isNull(thisIdx) || other.tile.vector.isNull(otherIdx))
             result.setNull(i)
