@@ -49,7 +49,7 @@ class TensorDataSource extends DataSourceRegister with RelationProvider {
 }
 
 object TensorDataSource {
-  final val SHORT_NAME = "raster"
+  final val SHORT_NAME = "tensor"
   final val PATH_PARAM = "path"
   final val PATHS_PARAM = "paths"
   final val BAND_INDEXES_PARAM = "band_indexes"

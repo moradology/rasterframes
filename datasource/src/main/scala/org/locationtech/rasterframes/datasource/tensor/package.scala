@@ -33,7 +33,7 @@ package object tensor {
 
   /** Adds `raster` format specifier to `DataFrameReader`. */
   implicit class DataFrameReaderHasRasterSourceFormat(val reader: DataFrameReader) {
-    def raster: RasterSourceDataFrameReader =
+    def tensor: RasterSourceDataFrameReader =
       tag[RasterSourceDataFrameReaderTag][DataFrameReader](
         reader.format(TensorDataSource.SHORT_NAME))
   }
