@@ -24,6 +24,7 @@ import geotrellis.raster._
 import geotrellis.vector.Extent
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types.{DataType, _}
+import org.locationtech.rasterframes.TensorType
 import org.locationtech.rasterframes.encoders.CatalystSerializer
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.model.{Cells, TileDataContext}
@@ -33,7 +34,7 @@ import org.locationtech.rasterframes.tiles.InternalRowTile
 import com.typesafe.scalalogging.Logger
 import org.slf4j.LoggerFactory
 
-@SQLUserDefinedType(udt = classOf[TensorUDT])
+@SQLUserDefinedType(udt = classOf[BufferedTensorUDT])
 class BufferedTensorUDT extends UserDefinedType[BufferedTensor] {
   import BufferedTensorUDT._
   override def typeName = BufferedTensorUDT.typeName
@@ -70,12 +71,12 @@ case object BufferedTensorUDT  {
   UDTRegistration.register(classOf[BufferedTensor].getName, classOf[BufferedTensorUDT].getName)
   logger.warn(s"Registered BufferedTensor")
 
-  final val typeName: String = "tensor"
+  final val typeName: String = "buffered_tensor"
 
   implicit def bufferedTensorSerializer: CatalystSerializer[BufferedTensor] = new CatalystSerializer[BufferedTensor] {
 
     override val schema: StructType = StructType(Seq(
-      StructField("arrow_tensor", BinaryType, false),
+      StructField("arrow_tensor", TensorType, false),
       StructField("extent", schemaOf[Extent], true),
       StructField("x_buffer", IntegerType, false),
       StructField("y_buffer", IntegerType, false)
@@ -84,7 +85,7 @@ case object BufferedTensorUDT  {
     override def to[R](t: BufferedTensor, io: CatalystIO[R]): R = {
       logger.warn(s"Encoding BufferedTensor to row instancex")
       io.create (
-        t.tile.toArrowBytes(),
+        t.tensor.toArrowBytes(),
         io.to(t.extent.getOrElse(null)),
         t.bufferCols,
         t.bufferRows

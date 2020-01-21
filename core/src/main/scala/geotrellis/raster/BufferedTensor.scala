@@ -3,6 +3,9 @@ package geotrellis.raster
 import geotrellis.vector.Extent
 import org.apache.arrow.vector.{Float8Vector, VectorSchemaRoot}
 import spire.syntax.cfor._
+import org.locationtech.rasterframes._
+import org.locationtech.rasterframes.encoders.CatalystSerializer._
+import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType, IntegerType}
 
 // trait CellAddressable[T] {
 //   def get(col: Int, row: Int): Int
@@ -20,23 +23,23 @@ import spire.syntax.cfor._
  * @param bufferSize: The number of cells around the boundary that are
  * considered as buffer data
  */
-case class BufferedTensor(val tile: ArrowTensor, val bufferRows: Int, val bufferCols: Int, val extent: Option[Extent]) extends CellGrid {
+case class BufferedTensor(val tensor: ArrowTensor, val bufferRows: Int, val bufferCols: Int, val extent: Option[Extent]) extends CellGrid {
 
   val cellType = DoubleCellType
 
-  val cols = tile.cols - bufferCols * 2
-  val rows = tile.rows - bufferRows * 2
-  val bands = tile.shape(0)
+  val cols = tensor.cols - bufferCols * 2
+  val rows = tensor.rows - bufferRows * 2
+  val bands = tensor.shape(0)
   val shape = Seq(bands, rows, cols)
   val rasterExtent = extent.map(RasterExtent(_, cols, rows))
 
-  lazy val bufferedCols = tile.cols
-  lazy val bufferedRows = tile.rows
+  lazy val bufferedCols = tensor.cols
+  lazy val bufferedRows = tensor.rows
   lazy val bufferedExtent = extent.map(_.expandBy(rasterExtent.get.cellwidth * bufferCols,
                                        rasterExtent.get.cellheight * bufferRows))
 
   def map(fn: Double => Double): BufferedTensor = {
-    BufferedTensor(tile.map(fn), bufferCols, bufferRows, extent)
+    BufferedTensor(tensor.map(fn), bufferCols, bufferRows, extent)
   }
 
   def zipWith(other: BufferedTensor)(fn: (Double, Double) => Double): BufferedTensor = {
@@ -65,10 +68,10 @@ case class BufferedTensor(val tile: ArrowTensor, val bufferRows: Int, val buffer
           val thisIdx = band * (bufferedRows * bufferedCols) + (r + thisRowOfs) * bufferedCols + c + thisColOfs
           val otherIdx = band * (other.bufferedRows * other.bufferedCols) + (r + otherRowOfs) * other.bufferedCols + c + otherColOfs
 
-          if (tile.vector.isNull(thisIdx) || other.tile.vector.isNull(otherIdx))
+          if (tensor.vector.isNull(thisIdx) || other.tensor.vector.isNull(otherIdx))
             result.setNull(i)
           else
-            result.set(i, fn(tile.vector.get(thisIdx), other.tile.vector.get(otherIdx)))
+            result.set(i, fn(tensor.vector.get(thisIdx), other.tensor.vector.get(otherIdx)))
 
           i += 1
         }
@@ -104,10 +107,10 @@ case class BufferedTensor(val tile: ArrowTensor, val bufferRows: Int, val buffer
           val thisIdx = band * (bufferedRows * bufferedCols) + (r + thisRowOfs) * bufferedCols + c + thisColOfs
           val otherIdx = (r + otherRowOfs) * other.bufferedCols + c + otherColOfs
 
-          if (tile.vector.isNull(thisIdx) || other.tile.vector.isNull(otherIdx))
+          if (tensor.vector.isNull(thisIdx) || other.tensor.vector.isNull(otherIdx))
             result.setNull(i)
           else
-            result.set(i, fn(tile.vector.get(thisIdx), other.tile.vector.get(otherIdx)))
+            result.set(i, fn(tensor.vector.get(thisIdx), other.tensor.vector.get(otherIdx)))
 
           i += 1
         }
@@ -126,13 +129,13 @@ case class BufferedTensor(val tile: ArrowTensor, val bufferRows: Int, val buffer
     var accum = s"BufferedTensor with $bands × $rows × $cols (bands × rows × cols)\n"
     val formatting = "% 4.2f"
     cfor(0)(_ < bands, _ + 1){ b =>
-      cfor(0)(_ < tile.rows, _ + 1){ r =>
-        cfor(0)(_ < tile.cols, _ + 1){ c =>
+      cfor(0)(_ < tensor.rows, _ + 1){ r =>
+        cfor(0)(_ < tensor.cols, _ + 1){ c =>
           if (r >= bufferRows && r < rows + bufferRows) {
             if (c >= bufferCols && c < bufferCols + cols)
               accum += "\033[1m"
           }
-          accum = accum + s"${formatting.format(tile.vector.get(i))} "
+          accum = accum + s"${formatting.format(tensor.vector.get(i))} "
           if (r >= bufferRows && r < rows + bufferRows) {
             if (c >= bufferCols && c < bufferCols + cols)
               accum += "\033[0m"
@@ -146,4 +149,17 @@ case class BufferedTensor(val tile: ArrowTensor, val bufferRows: Int, val buffer
     accum += s"with rows buffered by ${bufferRows} and cols buffers by ${bufferCols}"
     println(accum)
   }
+}
+
+
+object BufferedTensor {
+  def apply(tensor: ArrowTensor, br: Int, bc: Int): BufferedTensor = BufferedTensor(tensor, br, bc, None)
+  // val schema: StructType = {
+  //   val tensorSchema = StructField("tensor", TensorType, false)
+  //   val colSchema = StructField("columns", IntegerType, false)
+  //   val rowSchema = StructField("rows", IntegerType, false)
+  //   val extentSchema = StructField("extent", schemaOf[Extent], true)
+
+  //   StructType(Seq(tensorSchema, colSchema, rowSchema, extentSchema))
+  // }
 }
