@@ -22,24 +22,24 @@
 package org.locationtech.rasterframes.datasource
 
 import org.apache.spark.sql.DataFrameReader
-import org.locationtech.rasterframes.datasource.raster.RasterSourceDataSource._
+import org.locationtech.rasterframes.datasource.tensor.TensorDataSource._
 import shapeless.tag
 import shapeless.tag.@@
 
 package object tensor {
 
-  trait RasterSourceDataFrameReaderTag
-  type RasterSourceDataFrameReader = DataFrameReader @@ RasterSourceDataFrameReaderTag
+  trait TensorDataFrameReaderTag
+  type TensorDataFrameReader = DataFrameReader @@ TensorDataFrameReaderTag
 
   /** Adds `raster` format specifier to `DataFrameReader`. */
-  implicit class DataFrameReaderHasRasterSourceFormat(val reader: DataFrameReader) {
-    def tensor: RasterSourceDataFrameReader =
-      tag[RasterSourceDataFrameReaderTag][DataFrameReader](
+  implicit class DataFrameReaderHasTensorFormat(val reader: DataFrameReader) {
+    def tensor: TensorDataFrameReader =
+      tag[TensorDataFrameReaderTag][DataFrameReader](
         reader.format(TensorDataSource.SHORT_NAME))
   }
 
   /** Adds option methods relevant to RasterSourceDataSource. */
-  implicit class RasterSourceDataFrameReaderHasOptions(val reader: RasterSourceDataFrameReader)
-    extends CatalogReaderOptionsSupport[RasterSourceDataFrameReaderTag] with
-      SpatialIndexOptionsSupport[RasterSourceDataFrameReaderTag]
+  implicit class TensorDataFrameReaderHasOptions(val reader: TensorDataFrameReader)
+    extends CatalogReaderOptionsSupport[TensorDataFrameReaderTag] with
+      SpatialIndexOptionsSupport[TensorDataFrameReaderTag]
 }

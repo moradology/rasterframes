@@ -57,6 +57,7 @@ case class TensorRelation(
 ) extends BaseRelation with TableScan {
 
   lazy val inputColNames = catalogTable.bandColumnNames
+  println("bands", inputColNames)
 
   def pathColNames = inputColNames
     .map(_ + "_path")
