@@ -20,7 +20,8 @@
  */
 
 package org.locationtech.rasterframes
-import geotrellis.raster.ArrowTensor
+
+import geotrellis.raster._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.rf._
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
@@ -32,22 +33,22 @@ class TensorUDTSpec extends TestEnvironment with TestData with Inspectors {
   val tensorEncoder: ExpressionEncoder[ArrowTensor] = ExpressionEncoder()
   implicit val ser = TensorUDT.tensorSerializer
 
-  describe("TensorUDT") {
-    val sizes = Seq(1, 2, 4, 8, 11)
+  val sizes = Seq(1, 2, 4, 8, 11)
 
-    def forEveryConfig(test: ArrowTensor ⇒ Unit): Unit = {
-      forEvery(sizes.combinations(3).toSeq) { case Seq(xCount, yCount, zCount) ⇒
-        val arr = for {
-          xs <- Array.fill(xCount)(scala.math.random)
-          ys <- Array.fill(yCount)(scala.math.random)
-          zs <- Array.fill(zCount)(scala.math.random)
-        } yield {
-          xs * ys * zs
-        }
-        val tensor = ArrowTensor.fromArray(arr, xCount, yCount, zCount)
-          test(tensor)
+  def forEveryConfig(test: ArrowTensor ⇒ Unit): Unit = {
+    forEvery(sizes.combinations(3).toSeq) { case Seq(xCount, yCount, zCount) ⇒
+      val arr = for {
+        xs <- Array.fill(xCount)(scala.math.random)
+        ys <- Array.fill(yCount)(scala.math.random)
+        zs <- Array.fill(zCount)(scala.math.random)
+      } yield {
+        xs * ys * zs
       }
+      val tensor = ArrowTensor.fromArray(arr, xCount, yCount, zCount)
+        test(tensor)
     }
+  }
+  describe("TensorUDT") {
 
     it("should (en/de)code tile") {
       forEveryConfig { tensor =>
@@ -87,6 +88,16 @@ class TensorUDTSpec extends TestEnvironment with TestData with Inspectors {
       forEveryConfig { tensor =>
         val df = Seq(tensor).toDF("tensor")
         assert(df.select($"tensor").as[ArrowTensor].first().shape == tensor.shape)
+      }
+    }
+  }
+
+  describe("buffered tensor") {
+    it("should round trip through a dataframe") {
+      import spark.implicits._
+      forEveryConfig { tensor =>
+        val df = Seq(BufferedTensor(tensor, 1, 1, None)).toDF()
+        assert(df.select($"*").as[BufferedTensor].first().tensor.shape == tensor.shape)
       }
     }
   }

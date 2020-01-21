@@ -97,7 +97,10 @@ class TensorDataSourceSpec extends TestEnvironment with TestData {
         .load(cogPath.toASCIIString)
       val tcols = df.tileColumns
       tcols.length should be(3)
-      tcols.map(_.columnName) should contain allElementsOf Seq("_b0", "_b1", "_b2").map(s => DEFAULT_COLUMN_NAME + s)
+      tcols.map(_.columnName) should contain allElementsOf Seq("_b0", "_b1", "_b2")
+        .map(s => DEFAULT_COLUMN_NAME + s)
+
+      df.printSchema
     }
   //   it("should read a multiband file") {
   //     val df = spark.read
