@@ -84,7 +84,7 @@ case object BufferedTensorUDT  {
     override def to[R](t: BufferedTensor, io: CatalystIO[R]): R = {
       logger.warn(s"Encoding BufferedTensor to row instancex")
       io.create (
-        t.tile.toArrowBytes(),
+        t.tensor.toArrowBytes(),
         io.to(t.extent.getOrElse(null)),
         t.bufferCols,
         t.bufferRows

@@ -92,20 +92,14 @@ class TensorDataSourceSpec extends TestEnvironment with TestData {
   //     tcols.length should be(1)
   //     tcols.map(_.columnName) should contain(DEFAULT_COLUMN_NAME)
   //   }
-    it("should support a multiband schema") {
+    it("oughtta work") {
       import org.locationtech.rasterframes.expressions.transformers._
       val df = spark.read
         .tensor
+        .withBandIndexes(0)
         .load(cogPath.toASCIIString)
-
-      val tcols = df.tileColumns
-      tcols.length should be(3)
-      tcols.map(_.columnName) should contain allElementsOf Seq("_b0", "_b1", "_b2")
-        .map(s => DEFAULT_COLUMN_NAME + s)
-
       df.printSchema
-      
-
+      df.show
     }
   //   it("should read a multiband file") {
   //     val df = spark.read
@@ -135,14 +129,14 @@ class TensorDataSourceSpec extends TestEnvironment with TestData {
 
   //     df.select($"${b}_path").distinct().count() should be(1)
   //   }
-    it("should read a multiple files with one band") {
-      val df = spark.read.tensor
-        .from(Seq(cogPath, l8B1SamplePath, nonCogPath))
-        .withTileDimensions(128, 128)
-        .load()
-      df.select($"${b}_path").distinct().count() should be(3)
-      df.schema.size should be(2)
-    }
+    // it("should read a multiple files with one band") {
+    //   val df = spark.read.tensor
+    //     .from(Seq(cogPath, l8B1SamplePath, nonCogPath))
+    //     .withTileDimensions(128, 128)
+    //     .load()
+    //   df.select($"${b}_path").distinct().count() should be(3)
+    //   df.schema.size should be(2)
+    // }
   //   it("should read a multiple files with heterogeneous bands") {
   //     val df = spark.read.raster
   //       .from(Seq(cogPath, l8B1SamplePath, nonCogPath))
