@@ -20,6 +20,7 @@
  */
 
 package org.apache.spark.sql.rf
+
 import geotrellis.raster._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types.{DataType, _}

@@ -30,20 +30,20 @@ import org.apache.spark.sql.types.{DataType, StringType, ArrayType}
 import org.apache.spark.sql.{Column, TypedColumn}
 import org.apache.spark.unsafe.types.UTF8String
 import org.locationtech.rasterframes.RasterSourceType
-import org.locationtech.rasterframes.ref.RasterSource
 import org.apache.spark.sql.catalyst.util.GenericArrayData
 import org.locationtech.rasterframes.ref.RasterSource
 import org.locationtech.rasterframes.encoders.CatalystSerializer
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.ref.TensorRef._
+import org.locationtech.rasterframes.ref._
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.Encoder
 
 import org.slf4j.LoggerFactory
 
 import java.net.URI
 
 /**
- * Catalyst generator to convert a geotiff download URL into a series of rows
- * containing references to the internal tiles and associated extents.
  *
  * @since 5/4/18
  */
@@ -65,17 +65,16 @@ case class PatternToRasterSources(override val child: Expression, bands: Seq[Int
       pattern.replace("{band}", band.toString)
     }
     val uris: Seq[URI] = expanded.map(URI.create)
-    val rasterSources: Seq[RasterSource] = uris.map(RasterSource.apply)
-    val rsBands: Array[(RasterSource, Int)] = rasterSources.zip(bands).toArray
-    val ser = implicitly[CatalystSerializer[(RasterSource, Int)]]
+    val bandedRss = for {
+      uri <- uris
+      band <- bands
+    } yield (RasterSource(uri), band)
 
-    new GenericArrayData(rsBands.map(ser.toInternalRow))
+    new GenericArrayData(bandedRss.map(_.toInternalRow))
   }
 }
 
 object PatternToRasterSources {
-  import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
-  import org.apache.spark.sql.Encoder
   implicit val rsArrayEncoder: Encoder[Array[(RasterSource, Int)]] =
     ExpressionEncoder[Array[(RasterSource, Int)]]()
   def apply(rasterURI: Column, bands: Seq[Int]): TypedColumn[Any, Array[(RasterSource, Int)]] =

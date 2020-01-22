@@ -12,6 +12,10 @@ import org.apache.arrow.vector.ipc.message.MessageSerializer
 import org.apache.arrow.vector.types.FloatingPointPrecision
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema}
 import org.apache.arrow.vector.{Float8Vector, VectorSchemaRoot}
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+
+import org.locationtech.rasterframes.encoders.CatalystSerializerEncoder
+
 import spire.syntax.cfor._
 
 import scala.collection.JavaConverters._
@@ -184,6 +188,10 @@ case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends Ce
 }
 
 object ArrowTensor {
+  import org.apache.spark.sql.rf.TensorUDT._
+  implicit val arrowTensorEncoder: ExpressionEncoder[ArrowTensor] =
+    CatalystSerializerEncoder[ArrowTensor](true)
+
   val allocator = new RootAllocator(Long.MaxValue)
 
   val schema: Schema = {

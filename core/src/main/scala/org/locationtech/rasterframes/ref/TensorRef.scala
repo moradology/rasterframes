@@ -53,9 +53,11 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
   protected lazy val grid: GridBounds =
     subgrid.getOrElse(sample.rasterExtent.gridBoundsFor(extent, true))
 
-  protected lazy val realizedTensor: ArrowTensor = {
+  lazy val realizedTensor: ArrowTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
+    println("SOURCES", sources)
     val tiles = sources.map({ case (rs, band) =>
+      println("GRID", grid, band)
       rs.read(grid, Seq(band)).tile.band(0)
     })
     ArrowTensor.stackTiles(tiles)

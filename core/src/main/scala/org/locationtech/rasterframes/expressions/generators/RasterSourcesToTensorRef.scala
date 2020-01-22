@@ -23,18 +23,20 @@ package org.locationtech.rasterframes.expressions.generators
 
 import geotrellis.raster.GridBounds
 import geotrellis.vector.Extent
+import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback
-import org.apache.spark.sql.types.{DataType, StructField, StructType}
-import org.apache.spark.sql.{Column, TypedColumn}
+import org.apache.spark.sql.types.{DataType, StructField, StructType, ArrayType}
+import org.locationtech.rasterframes.encoders.CatalystSerializer
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.generators.RasterSourceToRasterRefs.bandNames
 import org.locationtech.rasterframes.model.TileDimensions
-import org.locationtech.rasterframes.ref.{RasterRef, RasterSource}
+import org.locationtech.rasterframes.ref.{RasterRef, RasterSource, TensorRef}
 import org.locationtech.rasterframes.util._
 import org.locationtech.rasterframes.RasterSourceType
 
+import scala.collection.mutable._
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -43,55 +45,59 @@ import scala.util.control.NonFatal
  *
  * @since 9/6/18
  */
-case class RasterSourcesToTensorRefs(children: Seq[Expression], bandIndexes: Seq[Int], subtileDims: Option[TileDimensions] = None) extends Expression
+// BUFFER HERE
+case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[TileDimensions] = None) extends UnaryExpression
   with Generator with CodegenFallback with ExpectsInputTypes {
+    import TensorRef._
 
-  override def inputTypes: Seq[DataType] = Seq.fill(children.size)(RasterSourceType)
-  override def nodeName: String = "rf_raster_source_to_raster_ref"
+  override def nodeName: String = "rf_raster_sources_to_tensor_ref"
 
-  override def elementSchema: StructType = StructType(for {
-    child <- children
-    basename = child.name + "_ref"
-    name <- bandNames(basename, bandIndexes)
-  } yield StructField(name, schemaOf[RasterRef], true))
+  override def inputTypes: Seq[DataType] = Seq(
+    ArrayType(schemaOf[(RasterSource, Int)])
+  )
 
-  private def band2ref(src: RasterSource, e: Option[(GridBounds, Extent)])(b: Int): RasterRef =
-    if (b < src.bandCount) RasterRef(src, b, e.map(_._2), e.map(_._1)) else null
+  override def dataType: DataType = ArrayType(schemaOf[TensorRef])
 
+  override def elementSchema: StructType =
+    StructType(Seq(StructField("tensor", schemaOf[TensorRef], true)))
 
   override def eval(input: InternalRow): TraversableOnce[InternalRow] = {
     try {
-      val refs = children.map { child ⇒
-        val src = RasterSourceType.deserialize(child.eval(input))
-        val srcRE = src.rasterExtent
-        subtileDims.map(dims => {
-          val subGB = src.layoutBounds(dims)
-          val subs = subGB.map(gb => (gb, srcRE.extentFor(gb, clamp = true)))
+      val serializer = implicitly[CatalystSerializer[(RasterSource, Int)]]
 
-          subs.map(p => bandIndexes.map(band2ref(src, Some(p))))
-        })
-          .getOrElse(Seq(bandIndexes.map(band2ref(src, None))))
+      val arr: Array[(RasterSource, Int)] =
+        child
+          .eval(input)
+          .asInstanceOf[WrappedArray[Row]]
+          .array
+          .map(serializer.fromRow)
+
+      val (sampleRS, _) = arr.head
+
+      val maybeSubs = subtileDims.map { dims =>
+        val subGB = sampleRS.layoutBounds(dims)
+        subGB.map(gb => (gb, sampleRS.rasterExtent.extentFor(gb, clamp = true)))
       }
-      refs.transpose.map(ts ⇒ InternalRow(ts.flatMap(_.map(_.toInternalRow)): _*))
+
+      val trefs = maybeSubs.map { subs =>
+        subs.map { case (gb, extent) => TensorRef(arr, Some(extent), Some(gb)) }
+      }.getOrElse(Seq(TensorRef(arr, None, None)))
+      
+      trefs.map(_.toInternalRow)
     }
     catch {
-      case NonFatal(ex) ⇒
-        val description = "Error fetching data for one of: " +
-          Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
-            .toOption.toSeq.flatten.mkString(", ")
-        throw new java.lang.IllegalArgumentException(description, ex)
+      case _: Throwable => ???
+      // case NonFatal(ex) ⇒
+      //   val description = "Error fetching data for one of: " +
+      //     Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
+      //       .toOption.toSeq.flatten.mkString(", ")
+      //   throw new java.lang.IllegalArgumentException(description, ex)
     }
   }
 }
 
 object RasterSourcesToTensorRef {
-  def apply(rrs: Column*): TypedColumn[Any, RasterRef] = apply(None, Seq(0), rrs: _*)
-  def apply(subtileDims: Option[TileDimensions], bandIndexes: Seq[Int], rrs: Column*): TypedColumn[Any, RasterRef] =
-    new Column(new RasterSourceToRasterRefs(rrs.map(_.expr), bandIndexes, subtileDims)).as[RasterRef]
-
-  private[rasterframes] def bandNames(basename: String, bandIndexes: Seq[Int]): Seq[String] = bandIndexes match {
-    case Seq() => Seq.empty
-    case Seq(0) => Seq(basename)
-    case s => s.map(n => basename + "_b" + n)
-  }
+  def apply(brs: Column): TypedColumn[Any, TensorRef] = apply(None, brs)
+  def apply(subtileDims: Option[TileDimensions], brs: Column): TypedColumn[Any, TensorRef] =
+    new Column(new RasterSourcesToTensorRefs(brs.expr, subtileDims)).as[TensorRef]
 }
