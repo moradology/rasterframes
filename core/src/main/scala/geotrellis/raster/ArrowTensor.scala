@@ -227,6 +227,32 @@ object ArrowTensor {
     new ArrowTensor(vec, shape)
   }
 
+  def stackTiles(others: Seq[Tile]): ArrowTensor = {
+    assert(others.size > 0, "Cannot stack an empty set of tensors!")
+    assert(others.map(_.rows).toSet.size == 1 && others.map(_.cols).toSet.size == 1,
+            "All tiles must have equal number of rows and columns!")
+    val rows = others.head.rows
+    val cols = others.head.cols
+    val bands = others.length
+    val newSize = rows * cols * bands
+    val result = new Float8Vector("array", allocator)
+    result.allocateNew(newSize)
+    result.setValueCount(newSize)
+    var pos = 0
+    for (other <- others) {
+      cfor(0)(_ < other.rows, _ + 1) { r =>
+        cfor(0)(_ < other.cols, _ + 1) { c =>
+          if (isNoData(other.get(c, r)))
+            result.setNull(pos)
+          else
+            result.set(pos, other.get(c, r))
+          pos += 1
+        }
+      }
+    }
+    ArrowTensor(result, Seq(bands, rows, cols))
+  }
+
   def stackTensors(others: Seq[ArrowTensor]): ArrowTensor = {
     assert(others.size > 0, "Cannot stack an empty set of tensors!")
     assert(others.map(_.rows).toSet.size == 1 && others.map(_.cols).toSet.size == 1,

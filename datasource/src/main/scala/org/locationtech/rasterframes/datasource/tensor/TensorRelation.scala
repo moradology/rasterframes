@@ -29,7 +29,7 @@ import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.locationtech.rasterframes.datasource.tensor.TensorDataSource.RasterSourceCatalogRef
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.accessors.{GetCRS, GetExtent}
-import org.locationtech.rasterframes.expressions.generators.{RasterSourceToRasterRefs, RasterSourceToTiles}
+import org.locationtech.rasterframes.expressions.generators.{RasterSourcesToTensorRef, RasterSourceToTiles}
 import org.locationtech.rasterframes.expressions.generators.RasterSourceToRasterRefs.bandNames
 import org.locationtech.rasterframes.expressions.transformers.{RasterRefToTile, URIToRasterSource, XZ2Indexer}
 import org.locationtech.rasterframes.model.TileDimensions
@@ -49,105 +49,88 @@ import org.locationtech.rasterframes.tiles.ProjectedRasterTile
   */
 case class TensorRelation(
   sqlContext: SQLContext,
-  catalogTable: RasterSourceCatalogRef,
-  bandIndexes: Seq[Int],
+  rspaths: Seq[String],
   subtileDims: Option[TileDimensions],
-  lazyTiles: Boolean,
   spatialIndexPartitions: Option[Int]
 ) extends BaseRelation with TableScan {
 
-  lazy val inputColNames = catalogTable.bandColumnNames
-  println("bands", inputColNames)
+  // lazy val inputColNames = catalogTable.bandColumnNames
+  // println("bands", inputColNames)
 
-  def pathColNames = inputColNames
-    .map(_ + "_path")
+  // def pathColNames = inputColNames
+  //   .map(_ + "_path")
 
-  def srcColNames = inputColNames
-    .map(_ + "_src")
+  // def srcColNames = inputColNames
+  //   .map(_ + "_src")
 
-  def refColNames = srcColNames
-    .flatMap(bandNames(_, bandIndexes))
-    .map(_ + "_ref")
+  // def refColNames = srcColNames
+  //   .flatMap(bandNames(_, bandIndexes))
+  //   .map(_ + "_ref")
 
-  def tileColNames = inputColNames
-    .flatMap(bandNames(_, bandIndexes))
+  // def tileColNames = inputColNames
+  //   .flatMap(bandNames(_, bandIndexes))
 
-  lazy val extraCols: Seq[StructField] = {
-    val catalog = sqlContext.table(catalogTable.tableName)
-    catalog.schema.fields.filter(f => !catalogTable.bandColumnNames.contains(f.name))
-  }
+  // lazy val extraCols: Seq[StructField] = {
+  //   val catalog = sqlContext.table(catalogTable.tableName)
+  //   catalog.schema.fields.filter(f => !catalogTable.bandColumnNames.contains(f.name))
+  // }
 
-  lazy val indexCols: Seq[StructField] =
-    if (spatialIndexPartitions.isDefined) Seq(StructField("spatial_index", LongType, false)) else Seq.empty
+  // lazy val indexCols: Seq[StructField] =
+  //   if (spatialIndexPartitions.isDefined) Seq(StructField("spatial_index", LongType, false)) else Seq.empty
 
   protected def defaultNumPartitions: Int =
     sqlContext.sparkSession.sessionState.conf.numShufflePartitions
 
   override def schema: StructType = {
-    val tileSchema = schemaOf[ProjectedRasterTile]
-    val paths = for {
-      pathCol <- pathColNames
-    } yield StructField(pathCol, StringType, false)
-    val tiles = for {
-      tileColName <- tileColNames
-    } yield StructField(tileColName, tileSchema, true)
+    // val tileSchema = schemaOf[ProjectedRasterTile]
+    // val paths = for {
+    //   pathCol <- pathColNames
+    // } yield StructField(pathCol, StringType, false)
+    // val tiles = for {
+    //   tileColName <- tileColNames
+    // } yield StructField(tileColName, tileSchema, true)
 
-    StructType(paths ++ tiles ++ extraCols ++ indexCols)
+    // StructType(paths ++ tiles ++ extraCols ++ indexCols)
+    ???
   }
 
   override def buildScan(): RDD[Row] = {
     import sqlContext.implicits._
     val numParts = spatialIndexPartitions.filter(_ > 0).getOrElse(defaultNumPartitions)
-    // The general transformation is:
-    // input -> path -> src -> ref -> tile
-    // Each step is broken down for readability
-    val inputs: DataFrame = sqlContext.table(catalogTable.tableName)
-      .repartition(numParts)
 
-    // Basically renames the input columns to have the '_path' suffix
-    val pathsAliasing = for {
-      (input, path) <- inputColNames.zip(pathColNames)
-    } yield col(input).as(path)
+    import  org.locationtech.rasterframes.ref._
+    import java.net.URI
+    val inputs = rspaths
+      .map(URI.create)
+      .map(RasterSource.apply).flatMap {rs =>
+        0 until rs.bandCount map { band =>
+          (rs, band)
+        }
+      }
 
-    // Wraps paths in a RasterSource
-    val srcs = for {
-      (pathColName, srcColName) <- pathColNames.zip(srcColNames)
-    } yield URIToRasterSource(col(pathColName)) as srcColName
-
-    // Add path columns
-    val withPaths = inputs
-      .select($"*" +: pathsAliasing: _*)
-
-    // Path columns have to be manually pulled along through each step. Resolve columns once
-    // and reused with each select.
-    val paths = pathColNames.map(withPaths.apply)
-
-    // Input columns along for the ride.
-    val extras = extraCols.map(f => inputs(f.name))
-
-    val df = if (lazyTiles) {
+    val df: DataFrame = {
       // Expand RasterSource into multiple columns per band, and multiple rows per tile
       // There's some unintentional fragility here in that the structure of the expression
       // is expected to line up with our column structure here.
-      val refs = RasterSourceToRasterRefs(subtileDims, bandIndexes, srcs: _*) as refColNames
+      val srcs = ???
+      val bandIndexes = ???
+      val refColNames = ???
+      val refs = RasterSourcesToTensorRef(subtileDims, bandIndexes, srcs: _*) as refColNames
 
       // RasterSourceToRasterRef is a generator, which means you have to do the Tile conversion
       // in a separate select statement (Query planner doesn't know how many columns ahead of time).
-      val refsToTiles = for {
-        (refColName, tileColName) <- refColNames.zip(tileColNames)
-      } yield RasterRefToTile(col(refColName)) as tileColName
+      // val refsToTiles = for {
+      //   (refColName, tileColName) <- refColNames.zip(tileColNames)
+      // } yield RasterRefToTile(col(refColName)) as tileColName
 
-      withPaths
-        .select(extras ++ paths :+ refs: _*)
-        .select(paths ++ refsToTiles ++ extras: _*)
-    }
-    else {
-      val tiles = RasterSourceToTiles(subtileDims, bandIndexes, srcs: _*) as tileColNames
-      withPaths
-        .select((paths :+ tiles) ++ extras: _*)
+      // withPaths
+      //   .select(extras ++ paths :+ refs: _*)
+      //   .select(paths ++ refsToTiles ++ extras: _*)
+      ???
     }
 
     if (spatialIndexPartitions.isDefined) {
+      val tileColNames: Seq[String] = ???
       val sample = col(tileColNames.head)
       val indexed = df
         .withColumn("spatial_index", XZ2Indexer(GetExtent(sample), GetCRS(sample)))
