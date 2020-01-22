@@ -39,7 +39,7 @@ import org.locationtech.rasterframes.tiles.ProjectedRasterTile
  *
  * @since 8/21/18
  */
-case class TensorRef(sources: Array[(RasterSource, Int)], subextent: Option[Extent], subgrid: Option[GridBounds])
+case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent], subgrid: Option[GridBounds])
   extends ProjectedRasterLike {
   def sample = sources.head._1
   def crs: CRS = sample.crs
@@ -58,7 +58,7 @@ case class TensorRef(sources: Array[(RasterSource, Int)], subextent: Option[Exte
     val tiles = sources.map({ case (rs, band) =>
       rs.read(grid, Seq(band)).tile.band(0)
     })
-    ??? //ArrowTensor.stackTiles(tiles)
+    ArrowTensor.stackTiles(tiles)
   }
 }
 
@@ -100,7 +100,7 @@ object TensorRef extends LazyLogging {
     )
 
     override def from[R](row: R, io: CatalystIO[R]): TensorRef = TensorRef(
-      io.getSeq[(RasterSource, Int)](row, 0).toArray,
+      io.getSeq[(RasterSource, Int)](row, 0),
       if (io.isNullAt(row, 1)) None
       else Option(io.get[Extent](row, 1)),
       if (io.isNullAt(row, 2)) None

@@ -38,13 +38,10 @@ class TensorDataSource extends DataSourceRegister with RelationProvider {
   import TensorDataSource._
   override def shortName(): String = SHORT_NAME
   override def createRelation(sqlContext: SQLContext, parameters: Map[String, String]): BaseRelation = {
-    val bands = parameters.bandIndexes
     val tiling = parameters.tileDims.orElse(Some(NOMINAL_TILE_DIMS))
-    val lazyTiles = parameters.lazyTiles
     val spatialIndex = parameters.spatialIndex
-    val spec = parameters.pathSpec
-    val catRef = spec.fold(_.registerAsTable(sqlContext), identity)
-    TensorRelation(sqlContext, catRef, bands, tiling, lazyTiles, spatialIndex)
+    val rasterPaths = parameters.paths
+    TensorRelation(sqlContext, rasterPaths, tiling, spatialIndex)
   }
 }
 
@@ -114,54 +111,55 @@ object TensorDataSource {
         .map(tokenize(_).map(_.toInt))
         .map { case Seq(cols, rows) => TileDimensions(cols, rows)}
 
-    def bandIndexes: Seq[Int] = parameters
-      .get(BAND_INDEXES_PARAM)
-      .map(tokenize(_).map(_.toInt))
-      .getOrElse(Seq(0))
+    // def bandIndexes: Seq[Int] = parameters
+    //   .get(BAND_INDEXES_PARAM)
+    //   .map(tokenize(_).map(_.toInt))
+    //   .getOrElse(Seq(0))
 
-    def lazyTiles: Boolean = parameters
-      .get(LAZY_TILES_PARAM).forall(_.toBoolean)
+    // def lazyTiles: Boolean = parameters
+    //   .get(LAZY_TILES_PARAM).forall(_.toBoolean)
 
     def spatialIndex: Option[Int] = parameters
       .get(SPATIAL_INDEX_PARTITIONS_PARAM).flatMap(p => Try(p.toInt).toOption)
 
-    def catalog: Option[RasterSourceCatalog] = {
-      val paths = (
-        parameters
-          .get(PATHS_PARAM)
-          .toSeq
-          .flatMap(_.split(Array('\n','\r'))) ++
-          parameters
-            .get(TensorDataSource.PATH_PARAM)
-            .toSeq
-        ).filter(_.nonEmpty)
+    // def catalog: Option[RasterSourceCatalog] = {
+    //   val paths = (
+    //     parameters
+    //       .get(PATHS_PARAM)
+    //       .toSeq
+    //       .flatMap(_.split(Array('\n','\r'))) ++
+    //       parameters
+    //         .get(TensorDataSource.PATH_PARAM)
+    //         .toSeq
+    //     ).filter(_.nonEmpty)
 
-      RasterSourceCatalog(paths)
-        .orElse(parameters
-          .get(CATALOG_CSV_PARAM)
-          .map(RasterSourceCatalog(_, catalogTableCols: _*))
-        )
-    }
+    //   RasterSourceCatalog(paths)
+    //     .orElse(parameters
+    //       .get(CATALOG_CSV_PARAM)
+    //       .map(RasterSourceCatalog(_, catalogTableCols: _*))
+    //     )
+    // }
 
-    def catalogTableCols: Seq[String] = parameters
+    // def catalogTableCols: Seq[String] = parameters
+    //   .get(CATALOG_TABLE_COLS_PARAM)
+    //   .map(tokenize(_).filter(_.nonEmpty).toSeq)
+    //   .getOrElse(Seq.empty)
+
+    def paths: Seq[String] = parameters
       .get(CATALOG_TABLE_COLS_PARAM)
       .map(tokenize(_).filter(_.nonEmpty).toSeq)
       .getOrElse(Seq.empty)
 
-    def catalogTable: Option[RasterSourceCatalogRef] = parameters
-      .get(CATALOG_TABLE_PARAM)
-      .map(p => RasterSourceCatalogRef(p, catalogTableCols: _*))
-
-    def pathSpec: Either[RasterSourceCatalog, RasterSourceCatalogRef] = {
-      (catalog, catalogTable) match {
-        case (Some(f), None) => Left(f)
-        case (None, Some(p)) => Right(p)
-        case (None, None) => throw new IllegalArgumentException(
-          s"Unable to interpret paths from: ${parameters.mkString("\n", "\n", "\n")}")
-        case _ => throw new IllegalArgumentException(
-          "Only one of a set of file paths OR a paths table column may be provided.")
-      }
-    }
+    // def pathSpec: Either[RasterSourceCatalog, RasterSourceCatalogRef] = {
+    //   (catalog, catalogTable) match {
+    //     case (Some(f), None) => Left(f)
+    //     case (None, Some(p)) => Right(p)
+    //     case (None, None) => throw new IllegalArgumentException(
+    //       s"Unable to interpret paths from: ${parameters.mkString("\n", "\n", "\n")}")
+    //     case _ => throw new IllegalArgumentException(
+    //       "Only one of a set of file paths OR a paths table column may be provided.")
+    //   }
+    // }
   }
 
   /** Mixin for adding extension methods on DataFrameReader for TensorDataSource-like readers. */
