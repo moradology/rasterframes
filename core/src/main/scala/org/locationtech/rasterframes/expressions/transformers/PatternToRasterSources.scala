@@ -47,7 +47,7 @@ import java.net.URI
  *
  * @since 5/4/18
  */
-case class PatternToRasterSources(override val child: Expression, bands: Seq[Int])
+case class PatternToRasterSources(override val child: Expression, bands: Option[Seq[Int]])
   extends UnaryExpression with ExpectsInputTypes with CodegenFallback {
     import PatternToRasterSources._
   @transient protected lazy val logger = Logger(LoggerFactory.getLogger(getClass.getName))
@@ -57,26 +57,21 @@ case class PatternToRasterSources(override val child: Expression, bands: Seq[Int
 
   override def inputTypes = Seq(StringType)
 
-  override def dataType: DataType = ArrayType(schemaOf[(RasterSource, Int)])
+  override def dataType: DataType = ArrayType(RasterSourceType)
 
   override protected def nullSafeEval(input: Any): Any =  {
     val pattern = input.asInstanceOf[UTF8String].toString
-    val expanded: Seq[String] = bands.map { band =>
-      pattern.replace("{band}", band.toString)
-    }
-    val uris: Seq[URI] = expanded.map(URI.create)
-    val bandedRss = for {
-      uri <- uris
-      band <- bands
-    } yield (RasterSource(uri), band)
+    val expanded: Seq[String] = bands.map(_.map(pattern.format(_))).getOrElse(Seq(pattern))
+    val sources: Seq[RasterSource] = expanded.map{ str => RasterSource(URI.create(str)) }
 
-    new GenericArrayData(bandedRss.map(_.toInternalRow))
+    new GenericArrayData(sources.map(RasterSourceType.serialize(_)))
   }
 }
 
 object PatternToRasterSources {
-  implicit val rsArrayEncoder: Encoder[Array[(RasterSource, Int)]] =
-    ExpressionEncoder[Array[(RasterSource, Int)]]()
-  def apply(rasterURI: Column, bands: Seq[Int]): TypedColumn[Any, Array[(RasterSource, Int)]] =
-    new Column(new PatternToRasterSources(rasterURI.expr, bands)).as[Array[(RasterSource, Int)]]
+  implicit val rsArrayEncoder: Encoder[Array[RasterSource]] =
+    ExpressionEncoder[Array[RasterSource]]()
+
+  def apply(rasterURI: Column, bands: Option[Seq[Int]]=None): TypedColumn[Any, Array[RasterSource]] =
+    new Column(new PatternToRasterSources(rasterURI.expr, bands)).as[Array[RasterSource]]
 }

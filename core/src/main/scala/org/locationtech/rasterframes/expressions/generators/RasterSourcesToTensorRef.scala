@@ -53,9 +53,7 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
 
   override def nodeName: String = "rf_raster_sources_to_tensor_ref"
 
-  override def inputTypes: Seq[DataType] = Seq(
-    ArrayType(schemaOf[(RasterSource, Int)])
-  )
+  override def inputTypes: Seq[DataType] = Seq(ArrayType(RasterSourceType))
 
   override def dataType: DataType = ArrayType(schemaOf[TensorRef])
 
@@ -64,16 +62,18 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
 
   override def eval(input: InternalRow): TraversableOnce[InternalRow] = {
     // try {
-      //val serializer = implicitly[CatalystSerializer[(RasterSource, Int)]]
+      val data = child.eval(input).asInstanceOf[ArrayData]
 
-      val data = child
-        .eval(input)
-        .asInstanceOf[ArrayData]
+      val rss: Array[(RasterSource, Int)] = {
+        val result = new Array[(RasterSource, Int)](data.numElements)
+        data.foreach(RasterSourceType, (i, e) => {
+          result(i) = (RasterSourceType.deserialize(e), 0)
+        })
+        result
+      }
+      println(s"Got arr=$rss")
 
-      val arr: Array[(RasterSource, Int)] =
-        for ( i <- (0 to data.numElements/2).toArray ) yield data.getStruct(i, 2).to[(RasterSource, Int)]
-
-      val (sampleRS, _) = arr.head
+      val (sampleRS, _) = rss.head
 
       val maybeSubs = subtileDims.map { dims =>
         val subGB = sampleRS.layoutBounds(dims)
@@ -81,12 +81,13 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
       }
 
       val trefs = maybeSubs.map { subs =>
-        subs.map { case (gb, extent) => TensorRef(arr, Some(extent), Some(gb)) }
-      }.getOrElse(Seq(TensorRef(arr, None, None)))
+        subs.map { case (gb, extent) => TensorRef(rss, Some(extent), Some(gb)) }
+      }.getOrElse(Seq(TensorRef(rss, None, None)))
 
       println(s"TensorRefs: $trefs")
 
-      trefs.map(_.toInternalRow)
+      println(s"${trefs.map(_.toInternalRow)}")
+      trefs.map{ tref => InternalRow(tref.toInternalRow) }
     // }
     // catch {
     //   case _: Throwable => ???

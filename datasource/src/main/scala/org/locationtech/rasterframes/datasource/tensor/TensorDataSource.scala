@@ -64,10 +64,9 @@ object TensorDataSource {
         .map(tokenize(_).map(_.toInt))
         .map { case Seq(cols, rows) => TileDimensions(cols, rows)}
 
-    def bandIndexes: Seq[Int] = parameters
+    def bandIndexes: Option[Seq[Int]] = parameters
       .get(BAND_INDEXES_PARAM)
       .map(tokenize(_).map(_.toInt))
-      .getOrElse(Seq(0))
 
     // def lazyTiles: Boolean = parameters
     //   .get(LAZY_TILES_PARAM).forall(_.toBoolean)

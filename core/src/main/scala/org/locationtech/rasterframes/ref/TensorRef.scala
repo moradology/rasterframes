@@ -61,7 +61,9 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
       println("GRID", grid, band)
       rs.read(grid, Seq(band)).tile.band(0)
     })
-    ArrowTensor.stackTiles(tiles)
+    val result = ArrowTensor.stackTiles(tiles)
+    println(s"Got result: $result")
+    result
   }
 }
 

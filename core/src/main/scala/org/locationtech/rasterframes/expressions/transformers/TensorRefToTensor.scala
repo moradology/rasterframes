@@ -27,6 +27,7 @@ import org.apache.spark.sql.catalyst.expressions.{ExpectsInputTypes, Expression,
 import org.apache.spark.sql.rf._
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{Column, TypedColumn}
+import org.locationtech.rasterframes.TensorType
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.row
 import org.locationtech.rasterframes.ref.TensorRef
@@ -48,11 +49,11 @@ case class TensorRefToTensor(child: Expression) extends UnaryExpression
 
   override def inputTypes = Seq(schemaOf[TensorRef])
 
-  override def dataType: DataType = schemaOf[ArrowTensor]
+  override def dataType: DataType = TensorType
 
   override protected def nullSafeEval(input: Any): Any = {
     val ref = row(input).to[TensorRef]
-    ref.realizedTensor.toInternalRow
+    TensorType.serialize(ref.realizedTensor)
   }
 }
 
