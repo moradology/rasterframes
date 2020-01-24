@@ -51,7 +51,7 @@ import geotrellis.raster.ArrowTensor
 case class TensorRelation(
   sqlContext: SQLContext,
   rsPaths: Seq[String],
-  bandIndexes: Seq[Int],
+  bandIndexes: Option[Seq[Int]],
   subtileDims: Option[TileDimensions],
   spatialIndexPartitions: Option[Int]
 ) extends BaseRelation with TableScan {
@@ -79,6 +79,9 @@ case class TensorRelation(
         .select($"*" +: Seq(srcs, refs): _*)
         .select($"*" +: Seq(tens): _*)
     }
+
+    println("This is the schema:")
+    df.printSchema
 
     if (spatialIndexPartitions.isDefined) {
       val indexed = df
