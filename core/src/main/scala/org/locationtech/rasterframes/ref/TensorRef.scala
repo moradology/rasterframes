@@ -29,6 +29,7 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.rf.RasterSourceUDT
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType, ArrayType}
 import org.apache.spark.sql.Encoder
+import org.locationtech.rasterframes._
 import org.locationtech.rasterframes.encoders.CatalystSerializer.{CatalystIO, _}
 import org.locationtech.rasterframes.encoders.{CatalystSerializer, CatalystSerializerEncoder}
 import org.locationtech.rasterframes.ref.RasterSource._
@@ -72,7 +73,7 @@ object TensorRef extends LazyLogging {
     new CatalystSerializer[(RasterSource, Int)] {
       override val schema: StructType =
         StructType(Seq(
-          StructField("rasterSource", schemaOf[RasterSource], false), 
+          StructField("rasterSource", RasterSourceType, false),
           StructField("bandIndex", IntegerType, false)
         ))
 
@@ -88,7 +89,6 @@ object TensorRef extends LazyLogging {
   }
 
   implicit val tensorRefSerializer: CatalystSerializer[TensorRef] = new CatalystSerializer[TensorRef] {
-    val rsType = new RasterSourceUDT()
     override val schema: StructType = StructType(Seq(
       StructField("sources", ArrayType(schemaOf[(RasterSource, Int)]), false),
       StructField("subextent", schemaOf[Extent], true),

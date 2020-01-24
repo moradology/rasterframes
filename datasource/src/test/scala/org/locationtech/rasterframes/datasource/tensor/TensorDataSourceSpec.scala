@@ -96,8 +96,10 @@ class TensorDataSourceSpec extends TestEnvironment with TestData {
       import org.locationtech.rasterframes.expressions.transformers._
       val df = spark.read
         .tensor
+        .from(cogPath.toASCIIString)
         .withBandIndexes(0)
-        .load(cogPath.toASCIIString)
+        .withTileDimensions(128,128)
+        .load()
       df.printSchema
       df.show
     }

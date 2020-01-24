@@ -28,7 +28,7 @@ import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.accessors.{GetCRS, GetExtent}
-import org.locationtech.rasterframes.expressions.generators.{RasterSourcesToTensorRef, RasterSourceToTiles}
+import org.locationtech.rasterframes.expressions.generators.{RasterSourcesToTensorRefs, RasterSourceToTiles}
 import org.locationtech.rasterframes.expressions.generators.RasterSourceToRasterRefs.bandNames
 import org.locationtech.rasterframes.expressions.transformers._
 import org.locationtech.rasterframes.model.TileDimensions
@@ -71,7 +71,7 @@ case class TensorRelation(
     val df: DataFrame = {
       val srcs = PatternToRasterSources(col("pathPattern"), bandIndexes) as "rasterSource"
 
-      val refs = RasterSourcesToTensorRef(subtileDims, srcs) as "tensorRef"
+      val refs = RasterSourcesToTensorRefs(subtileDims, srcs) as "tensorRef"
 
       val tens = TensorRefToTensor(col("tensorRef")) as "tensor"
 

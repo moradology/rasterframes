@@ -27,6 +27,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback
+import org.apache.spark.sql.catalyst.util.{ArrayData, GenericArrayData}
 import org.apache.spark.sql.types.{DataType, StructField, StructType, ArrayType}
 import org.locationtech.rasterframes.encoders.CatalystSerializer
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
@@ -62,15 +63,15 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
     StructType(Seq(StructField("tensor", schemaOf[TensorRef], true)))
 
   override def eval(input: InternalRow): TraversableOnce[InternalRow] = {
-    try {
-      val serializer = implicitly[CatalystSerializer[(RasterSource, Int)]]
+    // try {
+      //val serializer = implicitly[CatalystSerializer[(RasterSource, Int)]]
+
+      val data = child
+        .eval(input)
+        .asInstanceOf[ArrayData]
 
       val arr: Array[(RasterSource, Int)] =
-        child
-          .eval(input)
-          .asInstanceOf[WrappedArray[Row]]
-          .array
-          .map(serializer.fromRow)
+        for ( i <- (0 to data.numElements/2).toArray ) yield data.getStruct(i, 2).to[(RasterSource, Int)]
 
       val (sampleRS, _) = arr.head
 
@@ -82,21 +83,23 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
       val trefs = maybeSubs.map { subs =>
         subs.map { case (gb, extent) => TensorRef(arr, Some(extent), Some(gb)) }
       }.getOrElse(Seq(TensorRef(arr, None, None)))
-      
+
+      println(s"TensorRefs: $trefs")
+
       trefs.map(_.toInternalRow)
-    }
-    catch {
-      case _: Throwable => ???
-      // case NonFatal(ex) ⇒
-      //   val description = "Error fetching data for one of: " +
-      //     Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
-      //       .toOption.toSeq.flatten.mkString(", ")
-      //   throw new java.lang.IllegalArgumentException(description, ex)
-    }
+    // }
+    // catch {
+    //   case _: Throwable => ???
+    //   // case NonFatal(ex) ⇒
+    //   //   val description = "Error fetching data for one of: " +
+    //   //     Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
+    //   //       .toOption.toSeq.flatten.mkString(", ")
+    //   //   throw new java.lang.IllegalArgumentException(description, ex)
+    // }
   }
 }
 
-object RasterSourcesToTensorRef {
+object RasterSourcesToTensorRefs {
   def apply(brs: Column): TypedColumn[Any, TensorRef] = apply(None, brs)
   def apply(subtileDims: Option[TileDimensions], brs: Column): TypedColumn[Any, TensorRef] =
     new Column(new RasterSourcesToTensorRefs(brs.expr, subtileDims)).as[TensorRef]
