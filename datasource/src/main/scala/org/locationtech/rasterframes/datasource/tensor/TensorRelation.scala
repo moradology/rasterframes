@@ -26,6 +26,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.sources.{BaseRelation, TableScan}
 import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
+import org.locationtech.rasterframes._
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.accessors.{GetCRS, GetExtent}
 import org.locationtech.rasterframes.expressions.generators.{RasterSourcesToTensorRefs, RasterSourceToTiles}
@@ -59,7 +60,7 @@ case class TensorRelation(
   protected def defaultNumPartitions: Int =
     sqlContext.sparkSession.sessionState.conf.numShufflePartitions
 
-  override def schema: StructType = schemaOf[ArrowTensor]
+  override def schema: StructType = StructType(Seq(StructField("tensor", TensorType, true)))
 
   import sqlContext.sparkSession.implicits._
   val catalog = rsPaths.toDF("pathPattern")
@@ -76,8 +77,8 @@ case class TensorRelation(
       val tens = TensorRefToTensor(col("tensorRef")) as "tensor"
 
       catalog
-        .select($"*" +: Seq(srcs, refs): _*)
-        .select($"*" +: Seq(tens): _*)
+        .select(refs)
+        .select(tens)
     }
 
     println("This is the schema:")
