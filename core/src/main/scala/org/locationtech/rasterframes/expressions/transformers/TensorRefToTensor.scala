@@ -27,19 +27,19 @@ import org.apache.spark.sql.catalyst.expressions.{ExpectsInputTypes, Expression,
 import org.apache.spark.sql.rf._
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{Column, TypedColumn}
-import org.locationtech.rasterframes.TensorType
+import org.locationtech.rasterframes.BufferedTensorType
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.row
 import org.locationtech.rasterframes.ref.TensorRef
 import org.locationtech.rasterframes.tiles.ProjectedRasterTile
 
-import geotrellis.raster.ArrowTensor
+import geotrellis.raster.BufferedTensor
 
 import org.slf4j.LoggerFactory
 
 /**
  */
-case class TensorRefToTensor(child: Expression) extends UnaryExpression
+case class TensorRefToTensor(child: Expression, bufferPixels: Int) extends UnaryExpression
   with CodegenFallback with ExpectsInputTypes {
     import TensorUDT._
 
@@ -49,15 +49,16 @@ case class TensorRefToTensor(child: Expression) extends UnaryExpression
 
   override def inputTypes = Seq(schemaOf[TensorRef])
 
-  override def dataType: DataType = TensorType
+  override def dataType: DataType = BufferedTensorType
 
   override protected def nullSafeEval(input: Any): Any = {
     val ref = row(input).to[TensorRef]
-    TensorType.serialize(ref.realizedTensor)
+    val realized = ref.realizedTensor(bufferPixels)
+    BufferedTensorType.serialize(realized)
   }
 }
 
 object TensorRefToTensor {
-  def apply(rr: Column): TypedColumn[Any, ArrowTensor] =
-    new Column(TensorRefToTensor(rr.expr)).as[ArrowTensor]
+  def apply(rr: Column, bufferPixels: Int): TypedColumn[Any, BufferedTensor] =
+    new Column(TensorRefToTensor(rr.expr, bufferPixels)).as[BufferedTensor]
 }
