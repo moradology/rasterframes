@@ -94,11 +94,12 @@ class TensorDataSourceSpec extends TestEnvironment with TestData {
   //   }
     it("should serialize appropriately during ingest") {
       import org.locationtech.rasterframes.expressions.transformers._
+      val buffer = 2
       val df = spark.read
         .tensor
         .from(cogPath.toASCIIString)
         .withBandIndexes(0)
-        .withBuffer(2)
+        .withBuffer(buffer)
         .withTileDimensions(128,128)
         .load()
 
@@ -108,7 +109,7 @@ class TensorDataSourceSpec extends TestEnvironment with TestData {
       // to dataset
       import geotrellis.raster.BufferedTensor
       val ds = df.as[BufferedTensor]
-      println("first from dataset", ds.first)
+      ds.first.bufferCols shouldBe (buffer)
     }
   //   it("should read a multiband file") {
   //     val df = spark.read
