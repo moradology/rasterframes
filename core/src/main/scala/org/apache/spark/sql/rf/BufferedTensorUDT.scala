@@ -51,7 +51,7 @@ class BufferedTensorUDT extends UserDefinedType[BufferedTensor] {
       .orNull
 
   override def deserialize(datum: Any): BufferedTensor = {
-    logger.warn(s"Deserializing from $datum")
+    // logger.warn(s"Deserializing from $datum")
     Option(datum)
       .collect {
         case ir: InternalRow ⇒ ir.to[BufferedTensor]
@@ -83,22 +83,26 @@ case object BufferedTensorUDT  {
     ))
 
     override def to[R](t: BufferedTensor, io: CatalystIO[R]): R = {
-      logger.warn(s"Encoding BufferedTensor to row instancex")
       io.create (
-        t.tensor.toArrowBytes(),
-        io.to(t.extent.getOrElse(null)),
+        t.tensor,
+        t.extent.map(io.to(_)).getOrElse(null),
         t.bufferCols,
         t.bufferRows
       )
     }
 
     override def from[R](row: R, io: CatalystIO[R]): BufferedTensor = {
-      logger.warn(s"Deserializing from $row")
-      val bytes = io.getByteArray(row, 0)
-      val extent = if (io.isNullAt(row, 1)) None else Some(io.get[Extent](row, 1))
+      import org.apache.spark.sql.rf.TensorUDT._
+
+      val tensor = io.get[ArrowTensor](row, 0)
+      val extent =
+        if (io.isNullAt(row, 1))
+          None
+        else
+          Some(io.get[Extent](row, 1))
       val bx = io.getInt(row, 2)
       val by = io.getInt(row, 3)
-      new BufferedTensor(ArrowTensor.fromArrowMessage(bytes), bx, by, extent)
+      new BufferedTensor(tensor, bx, by, extent)
     }
   }
 }

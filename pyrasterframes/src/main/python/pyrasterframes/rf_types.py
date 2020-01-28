@@ -26,7 +26,7 @@ class here provides the PyRasterFrames entry point.
 """
 
 from pyspark import SparkContext
-from pyspark.sql import DataFrame, Column
+from pyspark.sql import DataFrame, Column, Row
 from pyspark.sql.types import (UserDefinedType, StructType, StructField, BinaryType, DoubleType, ShortType, IntegerType, StringType)
 
 from pyspark.ml.param.shared import HasInputCols
@@ -534,7 +534,7 @@ class BufferedTensorUDT(UserDefinedType):
     @classmethod
     def sqlType(cls):
         return StructType([
-            StructField("arrow_tensor", BinaryType(), False),
+            StructField("arrow_tensor", TensorUDT(), False),
             StructField("extent", StructType([
                 StructField("xmin", DoubleType(), False),
                 StructField("ymin", DoubleType(), False),
@@ -554,12 +554,14 @@ class BufferedTensorUDT(UserDefinedType):
         return 'org.apache.spark.sql.rf.BufferedTensorUDT'
 
     def serialize(self, obj):
-        tensor = pa.Tensor.from_numpy(obj.ndarray)
-        bos = pa.BufferOutputStream()
-        pa.write_tensor(tensor, bos)
-        buffer = bos.getvalue()
+        # print("Serializing an object", type(obj), obj, obj.__dict__)
+        # tensor = pa.Tensor.from_numpy(obj.__dict__['ndarray'])
+        # bos = pa.BufferOutputStream()
+        # pa.write_tensor(tensor, bos)
+        # buffer = bos.getvalue()
         return [
-            buffer.to_pybytes(),
+            ArrowTensor(obj.ndarray),
+            # TensorUDT().serialize(obj.__dict__['ndarray']),
             [
                 [obj.extent['xmin']],
                 [obj.extent['ymin']],
@@ -572,10 +574,7 @@ class BufferedTensorUDT(UserDefinedType):
 
     def deserialize(self, datum):
         print("deserializing {}".format(datum))
-        br = pa.BufferReader(datum.arrow_tensor)
-        tensor = pa.read_tensor(br)
-        ndarray = tensor.to_numpy()
-        return BufferedTensor(ndarray, datum.y_buffer, datum.x_buffer, {'xmin': datum.extent.xmin, 'ymin': datum.extent.ymin, 'xmax': datum.extent.xmax, 'ymax': datum.extent.ymax} if datum.extent else None)
+        return BufferedTensor(datum.arrow_tensor.ndarray, datum.y_buffer, datum.x_buffer, {'xmin': datum.extent.xmin, 'ymin': datum.extent.ymin, 'xmax': datum.extent.xmax, 'ymax': datum.extent.ymax} if datum.extent else None)
 
 
 class BufferedTensor(object):
