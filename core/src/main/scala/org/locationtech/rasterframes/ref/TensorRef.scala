@@ -35,6 +35,7 @@ import org.locationtech.rasterframes.encoders.{CatalystSerializer, CatalystSeria
 import org.locationtech.rasterframes.ref.RasterSource._
 import org.locationtech.rasterframes.tiles.ProjectedRasterTile
 
+
 /**
  * A delayed-read projected raster implementation.
  *
@@ -51,26 +52,48 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
   def cellType: CellType = sample.cellType
   //def tile: ProjectedRasterTile = RasterRefTile(this)
 
+
   protected lazy val grid: GridBounds =
     subgrid.getOrElse(sample.rasterExtent.gridBoundsFor(extent, true))
 
   lazy val realizedTensor: ArrowTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
-    val readGrid = subgrid.getOrElse(grid)
     val tiles = sources.map({ case (rs, band) =>
-      rs.read(readGrid, Seq(band)).tile.band(0)
+      rs.read(grid, Seq(band)).tile.band(0)
     })
     ArrowTensor.stackTiles(tiles)
   }
 
   def realizedTensor(bufferPixels: Int): BufferedTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
-    val readGrid = subgrid.map({ sg =>
-      sg.buffer(bufferPixels)
-    }).getOrElse(grid.buffer(bufferPixels))
+    val bufferedGrid = grid.buffer(bufferPixels)
+
     val tiles = sources.map({ case (rs, band) =>
-      rs.read(readGrid, Seq(band)).tile.band(0)
+      val tile = rs.read(bufferedGrid, Seq(band)).tile.band(0)
+      val cols = grid.colMax - grid.colMin + 1
+      val rows = grid.rowMax - grid.rowMin + 1
+      val colCropMin =
+        if (grid.colMin == 0) -bufferPixels else 0
+      val colCropMax =
+        if (grid.colMax == sample.cols-1) tile.cols + bufferPixels else tile.cols
+      val rowCropMin =
+        if (grid.rowMin == 0) -bufferPixels else 0
+      val rowCropMax =
+        if (grid.rowMax == sample.rows-1) tile.rows + bufferPixels else tile.rows
+
+      // println("BASE GRID", grid, "BUFF GRID", bufferedGrid)
+      // println("MIN COL", grid.colMin)
+      // println("MIN ROW", grid.rowMin)
+      // println("MAX COL", grid.colMax, "SAMPLE MAX COL", sample.cols-1)
+      // println("MAX ROW", grid.rowMax, "SAMPLE MAX ROW", sample.rows-1)
+      // println("TILE", GridBounds(0, 0, tile.cols, tile.rows))
+      // println("CROPPED", GridBounds(colCropMin, rowCropMin, colCropMax, rowCropMax))
+      // // clamp false means we buffer beyond the DATA boundaries
+      val cropOpts = geotrellis.raster.crop.Crop.Options(clamp=false)
+      val cropped = tile.crop(GridBounds(colCropMin, rowCropMin, colCropMax, rowCropMax), cropOpts)
+      cropped
     })
+
     BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
   }
 }
