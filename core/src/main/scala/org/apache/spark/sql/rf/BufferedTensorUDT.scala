@@ -74,6 +74,8 @@ case object BufferedTensorUDT  {
   final val typeName: String = "buffered_tensor"
 
   implicit def bufferedTensorSerializer: CatalystSerializer[BufferedTensor] = new CatalystSerializer[BufferedTensor] {
+    import org.apache.spark.sql.rf.TensorUDT._
+
 
     override val schema: StructType = StructType(Seq(
       StructField("arrow_tensor", TensorType, false),
@@ -84,7 +86,7 @@ case object BufferedTensorUDT  {
 
     override def to[R](t: BufferedTensor, io: CatalystIO[R]): R = {
       io.create (
-        t.tensor,
+        io.to(t.tensor),
         t.extent.map(io.to(_)).getOrElse(null),
         t.bufferCols,
         t.bufferRows
@@ -92,8 +94,6 @@ case object BufferedTensorUDT  {
     }
 
     override def from[R](row: R, io: CatalystIO[R]): BufferedTensor = {
-      import org.apache.spark.sql.rf.TensorUDT._
-
       val tensor = io.get[ArrowTensor](row, 0)
       val extent =
         if (io.isNullAt(row, 1))

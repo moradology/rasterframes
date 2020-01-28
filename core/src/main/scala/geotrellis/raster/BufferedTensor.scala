@@ -155,30 +155,10 @@ case class BufferedTensor(
 }
 
 
-// object BufferedTensor {
-//   def apply(tensor: ArrowTensor, br: Int, bc: Int): BufferedTensor = BufferedTensor(tensor, br, bc, None)
-//   // val schema: StructType = {
-//   //   val tensorSchema = StructField("tensor", TensorType, false)
-//   //   val colSchema = StructField("columns", IntegerType, false)
-//   //   val rowSchema = StructField("rows", IntegerType, false)
-//   //   val extentSchema = StructField("extent", schemaOf[Extent], true)
-
-//   //   StructType(Seq(tensorSchema, colSchema, rowSchema, extentSchema))
-//   // }
-// }
-
-
 object BufferedTensor {
   import org.apache.spark.sql.rf.BufferedTensorUDT._
   implicit val arrowTensorEncoder: ExpressionEncoder[BufferedTensor] =
     CatalystSerializerEncoder[BufferedTensor](true)
 
-  // val schema: StructType = {
-  //   val tensorSchema = StructField("tensor", schemaOf[ArrowTensor], false)
-  //   val colSchema = StructField("columns", IntegerType, false)
-  //   val rowSchema = StructField("rows", IntegerType, false)
-  //   val extentSchema = StructField("extent", schemaOf[Extent], true)
-
-  //   StructType(Seq(tensorSchema, colSchema, rowSchema, extentSchema))
-  // }
+   def apply(tensor: ArrowTensor, br: Int, bc: Int): BufferedTensor = BufferedTensor(tensor, br, bc, None)
 }
