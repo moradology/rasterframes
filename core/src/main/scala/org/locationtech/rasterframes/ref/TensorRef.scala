@@ -23,7 +23,7 @@ package org.locationtech.rasterframes.ref
 
 import com.typesafe.scalalogging.LazyLogging
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellType, GridBounds, Tile, ArrowTensor}
+import geotrellis.raster.{CellType, GridBounds, Tile, ArrowTensor, BufferedTensor}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.rf.RasterSourceUDT
@@ -56,16 +56,25 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
 
   lazy val realizedTensor: ArrowTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
-    println("SOURCES", sources)
+    val readGrid = subgrid.getOrElse(grid)
     val tiles = sources.map({ case (rs, band) =>
-      println("GRID", grid, band)
-      rs.read(grid, Seq(band)).tile.band(0)
+      rs.read(readGrid, Seq(band)).tile.band(0)
     })
-    val result = ArrowTensor.stackTiles(tiles)
-    println(s"Got result: $result")
-    result
+    ArrowTensor.stackTiles(tiles)
+  }
+
+  def realizedTensor(bufferPixels: Int): BufferedTensor = {
+    //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
+    val readGrid = subgrid.map({ sg =>
+      sg.buffer(bufferPixels)
+    }).getOrElse(grid.buffer(bufferPixels))
+    val tiles = sources.map({ case (rs, band) =>
+      rs.read(readGrid, Seq(band)).tile.band(0)
+    })
+    BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
   }
 }
+
 
 object TensorRef extends LazyLogging {
   import RasterSourceUDT._

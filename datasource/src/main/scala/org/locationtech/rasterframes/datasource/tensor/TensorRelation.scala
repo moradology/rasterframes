@@ -34,9 +34,6 @@ import org.locationtech.rasterframes.expressions.generators.RasterSourceToRaster
 import org.locationtech.rasterframes.expressions.transformers._
 import org.locationtech.rasterframes.model.TileDimensions
 import org.locationtech.rasterframes.tiles.ProjectedRasterTile
-import org.apache.spark.sql.rf.TensorUDT._
-
-import geotrellis.raster.ArrowTensor
 
 /**
   * Constructs a Spark Relation over one or more RasterSource paths.
@@ -54,13 +51,14 @@ case class TensorRelation(
   rsPaths: Seq[String],
   bandIndexes: Option[Seq[Int]],
   subtileDims: Option[TileDimensions],
+  bufferPixels: Int,
   spatialIndexPartitions: Option[Int]
 ) extends BaseRelation with TableScan {
 
   protected def defaultNumPartitions: Int =
     sqlContext.sparkSession.sessionState.conf.numShufflePartitions
 
-  override def schema: StructType = StructType(Seq(StructField("tensor", TensorType, true)))
+  override def schema: StructType = StructType(Seq(StructField("tensor", BufferedTensorType, true)))
 
   import sqlContext.sparkSession.implicits._
   val catalog = rsPaths.toDF("pathPattern")
@@ -70,15 +68,16 @@ case class TensorRelation(
     val numParts = spatialIndexPartitions.filter(_ > 0).getOrElse(defaultNumPartitions)
 
     val df: DataFrame = {
-      val srcs = PatternToRasterSources(col("pathPattern"), bandIndexes) as "rasterSource"
+      val srcs =
+        PatternToRasterSources(col("pathPattern"), bandIndexes) as "rasterSource"
 
-      val refs = RasterSourcesToTensorRefs(subtileDims, srcs) as "tensorRef"
+      val refs =
+        RasterSourcesToTensorRefs(subtileDims, srcs) as "tensorRef"
 
-      val tens = TensorRefToTensor(col("tensorRef")) as "tensor"
+      val tens =
+        TensorRefToTensor(col("tensorRef"), bufferPixels) as "tensor"
 
-      catalog
-        .select(refs)
-        .select(tens)
+      catalog.select(refs).select(tens)
     }
 
     println("This is the schema:")

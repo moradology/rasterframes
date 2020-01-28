@@ -25,7 +25,7 @@ import com.typesafe.scalalogging.Logger
 import geotrellis.raster.{Tile, TileFeature, isData}
 import geotrellis.spark.{ContextRDD, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.rf.{RasterSourceUDT, TensorUDT, TileUDT, BufferedTensorUDT}
+import org.apache.spark.sql.rf.{RasterSourceUDT, TensorUDT, BufferedTensorUDT, TileUDT}
 import org.apache.spark.sql.{DataFrame, SQLContext, rf}
 import org.locationtech.geomesa.spark.jts.DataFrameFunctions
 import org.locationtech.rasterframes.encoders.StandardEncoders

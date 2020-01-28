@@ -6,13 +6,11 @@ import spire.syntax.cfor._
 import org.locationtech.rasterframes._
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType, IntegerType}
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.rf.TensorUDT._
 
-// trait CellAddressable[T] {
-//   def get(col: Int, row: Int): Int
-//   def getDouble(col: Int, row: Int): Int
-// }
+import org.locationtech.rasterframes.encoders.CatalystSerializerEncoder
 
-// implicit class cellAddressableTile(t: Tile) extends CellAddressable[Tile]
 
 /**
  * Container used to interpret the underlying cell data as having a buffer
@@ -23,7 +21,12 @@ import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType
  * @param bufferSize: The number of cells around the boundary that are
  * considered as buffer data
  */
-case class BufferedTensor(val tensor: ArrowTensor, val bufferRows: Int, val bufferCols: Int, val extent: Option[Extent]) extends CellGrid {
+case class BufferedTensor(
+  val tensor: ArrowTensor,
+  val bufferRows: Int,
+  val bufferCols: Int,
+  val extent: Option[Extent]
+) extends CellGrid {
 
   val cellType = DoubleCellType
 
@@ -152,10 +155,26 @@ case class BufferedTensor(val tensor: ArrowTensor, val bufferRows: Int, val buff
 }
 
 
+// object BufferedTensor {
+//   def apply(tensor: ArrowTensor, br: Int, bc: Int): BufferedTensor = BufferedTensor(tensor, br, bc, None)
+//   // val schema: StructType = {
+//   //   val tensorSchema = StructField("tensor", TensorType, false)
+//   //   val colSchema = StructField("columns", IntegerType, false)
+//   //   val rowSchema = StructField("rows", IntegerType, false)
+//   //   val extentSchema = StructField("extent", schemaOf[Extent], true)
+
+//   //   StructType(Seq(tensorSchema, colSchema, rowSchema, extentSchema))
+//   // }
+// }
+
+
 object BufferedTensor {
-  def apply(tensor: ArrowTensor, br: Int, bc: Int): BufferedTensor = BufferedTensor(tensor, br, bc, None)
+  import org.apache.spark.sql.rf.BufferedTensorUDT._
+  implicit val arrowTensorEncoder: ExpressionEncoder[BufferedTensor] =
+    CatalystSerializerEncoder[BufferedTensor](true)
+
   // val schema: StructType = {
-  //   val tensorSchema = StructField("tensor", TensorType, false)
+  //   val tensorSchema = StructField("tensor", schemaOf[ArrowTensor], false)
   //   val colSchema = StructField("columns", IntegerType, false)
   //   val rowSchema = StructField("rows", IntegerType, false)
   //   val extentSchema = StructField("extent", schemaOf[Extent], true)

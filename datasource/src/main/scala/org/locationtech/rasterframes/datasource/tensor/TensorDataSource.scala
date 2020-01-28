@@ -42,7 +42,8 @@ class TensorDataSource extends DataSourceRegister with RelationProvider {
     val tiling = parameters.tileDims.orElse(Some(NOMINAL_TILE_DIMS))
     val spatialIndex = parameters.spatialIndex
     val rasterPaths = parameters.paths
-    TensorRelation(sqlContext, rasterPaths, bandIndexes, tiling, spatialIndex)
+    val bufferPixels = parameters.bufferPixels
+    TensorRelation(sqlContext, rasterPaths, bandIndexes, tiling, bufferPixels, spatialIndex)
   }
 }
 
@@ -52,6 +53,7 @@ object TensorDataSource {
   final val BAND_INDEXES_PARAM = "band_indexes"
   final val TILE_DIMS_PARAM = "tile_dimensions"
   final val LAZY_TILES_PARAM = "lazy_tiles"
+  final val BUFFER_PIXELS_PARAM = "tile_buffer"
   final val SPATIAL_INDEX_PARTITIONS_PARAM = "spatial_index_partitions"
 
   final val DEFAULT_COLUMN_NAME = PROJECTED_RASTER_COLUMN.columnName
@@ -68,50 +70,18 @@ object TensorDataSource {
       .get(BAND_INDEXES_PARAM)
       .map(tokenize(_).map(_.toInt))
 
-    // def lazyTiles: Boolean = parameters
-    //   .get(LAZY_TILES_PARAM).forall(_.toBoolean)
+    def bufferPixels: Int = parameters
+      .get(BUFFER_PIXELS_PARAM)
+      .map(_.toInt)
+      .getOrElse(0)
 
     def spatialIndex: Option[Int] = parameters
       .get(SPATIAL_INDEX_PARTITIONS_PARAM).flatMap(p => Try(p.toInt).toOption)
-
-    // def catalog: Option[RasterSourceCatalog] = {
-    //   val paths = (
-    //     parameters
-    //       .get(PATHS_PARAM)
-    //       .toSeq
-    //       .flatMap(_.split(Array('\n','\r'))) ++
-    //       parameters
-    //         .get(TensorDataSource.PATH_PARAM)
-    //         .toSeq
-    //     ).filter(_.nonEmpty)
-
-    //   RasterSourceCatalog(paths)
-    //     .orElse(parameters
-    //       .get(CATALOG_CSV_PARAM)
-    //       .map(RasterSourceCatalog(_, catalogTableCols: _*))
-    //     )
-    // }
-
-    // def catalogTableCols: Seq[String] = parameters
-    //   .get(CATALOG_TABLE_COLS_PARAM)
-    //   .map(tokenize(_).filter(_.nonEmpty).toSeq)
-    //   .getOrElse(Seq.empty)
 
     def paths: Seq[String] = parameters
       .get(PATHS_PARAM)
       .map(tokenize(_).filter(_.nonEmpty).toSeq)
       .getOrElse(Seq.empty)
-
-    // def pathSpec: Either[RasterSourceCatalog, RasterSourceCatalogRef] = {
-    //   (catalog, catalogTable) match {
-    //     case (Some(f), None) => Left(f)
-    //     case (None, Some(p)) => Right(p)
-    //     case (None, None) => throw new IllegalArgumentException(
-    //       s"Unable to interpret paths from: ${parameters.mkString("\n", "\n", "\n")}")
-    //     case _ => throw new IllegalArgumentException(
-    //       "Only one of a set of file paths OR a paths table column may be provided.")
-    //   }
-    // }
   }
 
   /** Mixin for adding extension methods on DataFrameReader for TensorDataSource-like readers. */
@@ -142,31 +112,15 @@ object TensorDataSource {
         reader.option(TensorDataSource.TILE_DIMS_PARAM, s"$cols,$rows")
       )
 
+    def withBuffer(bufferPixels: Int): TaggedReader =
+      tag[ReaderTag][DataFrameReader](
+        reader.option(TensorDataSource.BUFFER_PIXELS_PARAM, bufferPixels.toString)
+      )
+
     /** Indicate if tile reading should be delayed until cells are fetched. Defaults to `true`. */
     def withLazyTiles(state: Boolean): TaggedReader =
       tag[ReaderTag][DataFrameReader](
         reader.option(TensorDataSource.LAZY_TILES_PARAM, state))
-
-    // def fromCatalog(catalog: DataFrame, bandColumnNames: String*): TaggedReader =
-    //   tag[ReaderTag][DataFrameReader] {
-    //     val tmpName = tmpTableName()
-    //     catalog.createOrReplaceTempView(tmpName)
-    //     reader
-    //       .option(TensorDataSource.CATALOG_TABLE_PARAM, tmpName)
-    //       .option(TensorDataSource.CATALOG_TABLE_COLS_PARAM, bandColumnNames.mkString(",")): DataFrameReader
-    //   }
-
-    // def fromCatalog(tableName: String, bandColumnNames: String*): TaggedReader =
-    //   tag[ReaderTag][DataFrameReader](
-    //     reader.option(TensorDataSource.CATALOG_TABLE_PARAM, tableName)
-    //       .option(TensorDataSource.CATALOG_TABLE_COLS_PARAM, bandColumnNames.mkString(","))
-    //   )
-
-    // def fromCSV(catalogCSV: String, bandColumnNames: String*): TaggedReader =
-    //   tag[ReaderTag][DataFrameReader](
-    //     reader.option(TensorDataSource.CATALOG_CSV_PARAM, catalogCSV)
-    //       .option(TensorDataSource.CATALOG_TABLE_COLS_PARAM, bandColumnNames.mkString(","))
-    //   )
 
     def from(newlineDelimPaths: String): TaggedReader =
       tag[ReaderTag][DataFrameReader](
