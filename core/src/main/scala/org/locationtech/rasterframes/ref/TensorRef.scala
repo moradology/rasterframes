@@ -70,28 +70,17 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
 
     val tiles = sources.map({ case (rs, band) =>
       val tile = rs.read(bufferedGrid, Seq(band)).tile.band(0)
-      val cols = grid.colMax - grid.colMin + 1
-      val rows = grid.rowMax - grid.rowMin + 1
-      val colCropMin =
-        if (grid.colMin == 0) -bufferPixels else 0
-      val colCropMax =
-        if (grid.colMax == sample.cols-1) tile.cols + bufferPixels else tile.cols
-      val rowCropMin =
-        if (grid.rowMin == 0) -bufferPixels else 0
-      val rowCropMax =
-        if (grid.rowMax == sample.rows-1) tile.rows + bufferPixels else tile.rows
 
-      // println("BASE GRID", grid, "BUFF GRID", bufferedGrid)
-      // println("MIN COL", grid.colMin)
-      // println("MIN ROW", grid.rowMin)
-      // println("MAX COL", grid.colMax, "SAMPLE MAX COL", sample.cols-1)
-      // println("MAX ROW", grid.rowMax, "SAMPLE MAX ROW", sample.rows-1)
-      // println("TILE", GridBounds(0, 0, tile.cols, tile.rows))
-      // println("CROPPED", GridBounds(colCropMin, rowCropMin, colCropMax, rowCropMax))
-      // // clamp false means we buffer beyond the DATA boundaries
-      val cropOpts = geotrellis.raster.crop.Crop.Options(clamp=false)
-      val cropped = tile.crop(GridBounds(colCropMin, rowCropMin, colCropMax, rowCropMax), cropOpts)
-      cropped
+      val rsBounds =
+        GridBounds(0, 0, rs.cols - 1, rs.rows - 1)
+      val cropBounds =
+        TensorRef.bufferedCropBounds(rsBounds, bufferedGrid, bufferPixels)
+      val cropOpts =
+        geotrellis.raster.crop.Crop.Options(clamp=false)
+      val ndBuffered = 
+        tile.crop(cropBounds, cropOpts)
+
+      ndBuffered
     })
 
     BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
@@ -102,6 +91,25 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
 object TensorRef extends LazyLogging {
   import RasterSourceUDT._
   private val log = logger
+
+  // This function is here to provide gridbounds for padding (via crop w/ clamp=false)
+  def bufferedCropBounds(totalBounds: GridBounds, readBounds: GridBounds, bufferPixels: Int): GridBounds = {
+    val rsCols = totalBounds.colMax - totalBounds.colMin
+    val rsRows = totalBounds.rowMax - totalBounds.rowMin
+    val readCols = readBounds.colMax - readBounds.colMin
+    val readRows = readBounds.rowMax - readBounds.rowMin
+
+    val colCropMin =
+      if (readBounds.colMin == 0) -bufferPixels else 0
+    val colCropMax =
+      if (readBounds.colMax == totalBounds.colMax) readCols + bufferPixels else readCols
+    val rowCropMin =
+      if (readBounds.rowMin == 0) -bufferPixels else 0
+    val rowCropMax =
+      if (readBounds.rowMax == totalBounds.rowMax) readRows + bufferPixels else readRows
+
+    GridBounds(colCropMin, rowCropMin, colCropMax, rowCropMax)
+  }
 
   implicit val rsBandSerializer: CatalystSerializer[(RasterSource, Int)] =
     new CatalystSerializer[(RasterSource, Int)] {
