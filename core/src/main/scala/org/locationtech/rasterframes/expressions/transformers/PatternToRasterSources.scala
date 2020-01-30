@@ -62,7 +62,7 @@ case class PatternToRasterSources(override val child: Expression, bands: Option[
   override protected def nullSafeEval(input: Any): Any =  {
     val pattern = input.asInstanceOf[UTF8String].toString
     val expanded: Seq[String] = bands.map(_.map(pattern.format(_))).getOrElse(Seq(pattern))
-    val sources: Seq[RasterSource] = expanded.map{ str => RasterSource(URI.create(str)) }
+    val sources: Seq[RasterSource] = expanded.map(URI.create).map(RasterSource.apply)
 
     new GenericArrayData(sources.map(RasterSourceType.serialize(_)))
   }

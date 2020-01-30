@@ -71,7 +71,7 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
         })
         result
       }
-      println(s"Got arr=$rss")
+      println(s"Got arr=${rss.toList}")
 
       val (sampleRS, _) = rss.head
 
