@@ -13,6 +13,7 @@ import org.apache.arrow.vector.types.FloatingPointPrecision
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema}
 import org.apache.arrow.vector.{Float8Vector, VectorSchemaRoot}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 
 import org.locationtech.rasterframes.encoders.CatalystSerializerEncoder
 
@@ -86,6 +87,21 @@ case class ArrowTensor(val vector: Float8Vector, val shape: Seq[Int]) extends Ce
       }
     }
     ArrowTensor(result, shape)
+  }
+
+  def getPixelVector(col: Int, row: Int): Vector = {
+    val pixelStack =
+      for (depth <- 0 until shape(0)) yield {
+    //    println("handling depth: ", depth)
+        val i = depth * row * col
+        if (vector.isNull(i))
+          Double.NaN
+        else
+          vector.get(i)
+      }
+   //   println("pixel stack", pixelStack.toList)
+
+    Vectors.dense(pixelStack.toArray)
   }
 
   def sliceBands(bands: Seq[Int]): ArrowTensor = {
