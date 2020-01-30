@@ -33,7 +33,8 @@ import org.locationtech.rasterframes.expressions.generators.{RasterSourcesToTens
 import org.locationtech.rasterframes.expressions.generators.RasterSourceToRasterRefs.bandNames
 import org.locationtech.rasterframes.expressions.transformers._
 import org.locationtech.rasterframes.model.TileDimensions
-import org.locationtech.rasterframes.tiles.ProjectedRasterTile
+import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
+import org.locationtech.rasterframes.encoders.StandardEncoders._
 
 /**
   * Constructs a Spark Relation over one or more RasterSource paths.
@@ -58,7 +59,11 @@ case class TensorRelation(
   protected def defaultNumPartitions: Int =
     sqlContext.sparkSession.sessionState.conf.numShufflePartitions
 
-  override def schema: StructType = StructType(Seq(StructField("tensor", BufferedTensorType, true)))
+  override def schema: StructType = StructType(Seq(
+    StructField("tensorData", schemaOf[ProjectedBufferedTensor], true)
+  ))
+  // pre buffer
+    //StructField("tensor", BufferedTensorType, true)
 
   import sqlContext.sparkSession.implicits._
   val catalog = rsPaths.toDF("pathPattern")
@@ -75,7 +80,7 @@ case class TensorRelation(
         RasterSourcesToTensorRefs(subtileDims, srcs) as "tensorRef"
 
       val tens =
-        TensorRefToTensor(col("tensorRef"), bufferPixels) as "tensor"
+        TensorRefToTensor(col("tensorRef"), bufferPixels) as "tensorData"
 
       catalog.select(refs).select(tens)
     }

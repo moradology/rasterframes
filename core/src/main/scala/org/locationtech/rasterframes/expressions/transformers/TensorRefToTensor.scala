@@ -27,13 +27,15 @@ import org.apache.spark.sql.catalyst.expressions.{ExpectsInputTypes, Expression,
 import org.apache.spark.sql.rf._
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{Column, TypedColumn}
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.Encoder
 import org.locationtech.rasterframes.BufferedTensorType
 import org.locationtech.rasterframes.encoders.CatalystSerializer._
 import org.locationtech.rasterframes.expressions.row
 import org.locationtech.rasterframes.ref.TensorRef
-import org.locationtech.rasterframes.tiles.ProjectedRasterTile
-
-import geotrellis.raster.BufferedTensor
+import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
+import org.locationtech.rasterframes.encoders.StandardEncoders._
+import org.locationtech.rasterframes.encoders._
 
 import org.slf4j.LoggerFactory
 
@@ -41,7 +43,6 @@ import org.slf4j.LoggerFactory
  */
 case class TensorRefToTensor(child: Expression, bufferPixels: Int) extends UnaryExpression
   with CodegenFallback with ExpectsInputTypes {
-    import TensorUDT._
 
   @transient protected lazy val logger = Logger(LoggerFactory.getLogger(getClass.getName))
 
@@ -49,12 +50,14 @@ case class TensorRefToTensor(child: Expression, bufferPixels: Int) extends Unary
 
   override def inputTypes = Seq(schemaOf[TensorRef])
 
-  override def dataType: DataType = BufferedTensorType
+  override def dataType: DataType = schemaOf[ProjectedBufferedTensor]
 
   override protected def nullSafeEval(input: Any): Any = {
+    implicit val ser = ProjectedBufferedTensor.serializer
     val ref = row(input).to[TensorRef]
     val realized = ref.realizedTensor(bufferPixels)
-    BufferedTensorType.serialize(realized)
+
+    realized.toInternalRow
   }
 }
 
