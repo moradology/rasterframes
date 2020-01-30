@@ -240,6 +240,70 @@ def _raster_reader(
         .load(path, **options)
 
 
+def _tensor_reader(
+        df_reader,
+        path=None,
+        band_indexes=None,
+        tile_dimensions=(256, 256),
+        buffer_pixels=0,
+        spatial_index_partitions=None,
+        **options):
+    """
+    Returns a Spark DataFrame from raster data files specified by URIs.
+    Each row in the returned DataFrame will contain a column with struct of (CRS, Extent, Tile) for each item in
+      `catalog_col_names`.
+    Multiple bands from the same raster file are spread across rows of the DataFrame. See `band_indexes` param.
+    If bands from a scene are stored in separate files, provide a DataFrame to the `path` parameter.
+
+    For more details and example usage, consult https://rasterframes.io/raster-read.html
+
+    :param path: a (optionally comma-delimeted) string or list of strings giving URI patterns to the raster data to read.  Patterns will be formatted in printf style with a single '%d' format specifier where the band number will be used to exand the pattern into the final source file name.  Must specify band_indexes for the expansion to occur.
+    :param band_indexes: list of zero-based indexes used for pattern expansion.  If omitted, pattern expansion will be skipped.
+    :param tile_dimensions: tuple or list of two indicating the default tile dimension as (rows, columns).
+    :param buffer_pixels: an integer number value for how many pixels of additional buffer to read
+    :param spatial_index_partitions: If true, partitions read tiles by a Z2 spatial index using the default shuffle partitioning.  If a values > 0, the given number of partitions are created instead of the default.
+    :param options: Additional keyword arguments to pass to the Spark DataSource.
+    """
+
+    spark = SparkContext._active_spark_context._rf_context._spark_session
+    tds = spark._jvm.org.locationtech.rasterframes.datasource.tensor.TensorDataSource
+
+    from pandas import DataFrame as PdDataFrame
+
+    def to_csv(comp):
+        if isinstance(comp, str):
+            return comp
+        else:
+            return ','.join(str(v) for v in comp)
+
+    if band_indexes:
+        options.update({tds.BAND_INDEXES_PARAM(): to_csv(band_indexes)})
+
+    if spatial_index_partitions:
+        num = int(spatial_index_partitions)
+        if num < 0:
+            spatial_index_partitions = '-1'
+        elif num == 0:
+            spatial_index_partitions = None
+
+    if spatial_index_partitions:
+        if spatial_index_partitions == True:
+            spatial_index_partitions = "-1"
+        else:
+            spatial_index_partitions = str(spatial_index_partitions)
+        options.update({tds.SPATIAL_INDEX_PARTITIONS_PARAM(): spatial_index_partitions})
+
+    options.update({
+        tds.TILE_DIMS_PARAM(): to_csv(tile_dimensions),
+        tds.PATHS_PARAM(): to_csv(path),
+        tds.BUFFER_PIXELS_PARAM(): str(buffer_pixels if buffer_pixels >= 0 else 0)
+    })
+
+    return df_reader \
+        .format("tensor") \
+        .load(**options)
+
+
 def _geotiff_writer(
     df_writer,
     path=None,
@@ -286,6 +350,7 @@ DataFrame.raster_join = _raster_join
 
 # Add DataSource convenience methods to the DataFrameReader
 DataFrameReader.raster = _raster_reader
+DataFrameReader.tensor = _tensor_reader
 DataFrameReader.geojson = lambda df_reader, path: _aliased_reader(df_reader, "geojson", path)
 DataFrameReader.geotiff = lambda df_reader, path: _layer_reader(df_reader, "geotiff", path)
 DataFrameWriter.geotiff = _geotiff_writer
