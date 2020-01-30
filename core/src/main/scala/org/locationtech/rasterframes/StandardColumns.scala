@@ -24,13 +24,14 @@ package org.locationtech.rasterframes
 import java.sql.Timestamp
 
 import geotrellis.proj4.CRS
-import geotrellis.raster.{ArrowTensor, Tile}
+import geotrellis.raster.{ArrowTensor, Tile, BufferedTensor}
 import geotrellis.spark.{SpatialKey, TemporalKey}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.sql.functions.col
 import org.locationtech.jts.geom.{Point => jtsPoint, Polygon => jtsPolygon}
 import org.locationtech.rasterframes.encoders.StandardEncoders.PrimitiveEncoders._
 import org.locationtech.rasterframes.tiles.ProjectedRasterTile
+import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
 
 /**
  * Constants identifying column in most RasterFrames.
@@ -72,8 +73,9 @@ trait StandardColumns {
   def TILE_COLUMN = col("tile").as[Tile]
   /** Default RasterFrameLayer tile column name. */
 
-  // This is a `def` because `TileUDT` needs to be initialized first.
-  def TENSOR_COLUMN = col("tensor").as[ArrowTensor]
+  def TENSOR_COLUMN = col("tensor").as[BufferedTensor]
+
+  def PROJECTED_TENSOR_COLUMN = col("tensor_data").as[ProjectedBufferedTensor]
 
   /** Default column name for a tile with its CRS and Extent. */
   def PROJECTED_RASTER_COLUMN = col("proj_raster").as[ProjectedRasterTile]

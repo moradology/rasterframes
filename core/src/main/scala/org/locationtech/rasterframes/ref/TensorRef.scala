@@ -23,7 +23,7 @@ package org.locationtech.rasterframes.ref
 
 import com.typesafe.scalalogging.LazyLogging
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellType, GridBounds, Tile, ArrowTensor, BufferedTensor}
+import geotrellis.raster.{CellType, GridBounds, Tile, ArrowTensor, BufferedTensor, RasterExtent}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.rf.RasterSourceUDT
@@ -33,7 +33,7 @@ import org.locationtech.rasterframes._
 import org.locationtech.rasterframes.encoders.CatalystSerializer.{CatalystIO, _}
 import org.locationtech.rasterframes.encoders.{CatalystSerializer, CatalystSerializerEncoder}
 import org.locationtech.rasterframes.ref.RasterSource._
-import org.locationtech.rasterframes.tiles.ProjectedRasterTile
+import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
 
 
 /**
@@ -45,8 +45,6 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
   extends ProjectedRasterLike {
   def sample = sources.head._1
   def crs: CRS = sample.crs
-  def extent: Extent = subextent.getOrElse(sample.extent)
-  def projectedExtent: ProjectedExtent = ProjectedExtent(extent, crs)
   def cols: Int = grid.width
   def rows: Int = grid.height
   def cellType: CellType = sample.cellType
@@ -56,6 +54,8 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
   protected lazy val grid: GridBounds =
     subgrid.getOrElse(sample.rasterExtent.gridBoundsFor(extent, true))
 
+  lazy val extent: Extent = RasterExtent(sample.extent, sample.cellSize).extentFor(grid)
+
   lazy val realizedTensor: ArrowTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
     val tiles = sources.map({ case (rs, band) =>
@@ -64,7 +64,7 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
     ArrowTensor.stackTiles(tiles)
   }
 
-  def realizedTensor(bufferPixels: Int): BufferedTensor = {
+  def realizedTensor(bufferPixels: Int): ProjectedBufferedTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
     val bufferedGrid = grid.buffer(bufferPixels)
 
@@ -80,10 +80,13 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
       val ndBuffered = 
         tile.crop(cropBounds, cropOpts)
 
-      ndBuffered
+      ndBuffered 
     })
 
-    BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
+    val bufferedTensor =
+      BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
+
+    ProjectedBufferedTensor(bufferedTensor, extent, crs)
   }
 }
 

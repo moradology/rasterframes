@@ -58,7 +58,7 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
   override def dataType: DataType = ArrayType(schemaOf[TensorRef])
 
   override def elementSchema: StructType =
-    StructType(Seq(StructField("tensor", schemaOf[TensorRef], true)))
+    StructType(Seq(StructField("tensor_ref", schemaOf[TensorRef], true)))
 
   override def eval(input: InternalRow): TraversableOnce[InternalRow] = {
     // try {
@@ -84,9 +84,9 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
         subs.map { case (gb, extent) => TensorRef(rss, Some(extent), Some(gb)) }
       }.getOrElse(Seq(TensorRef(rss, None, None)))
 
-      println(s"TensorRefs: $trefs")
+      //println(s"TensorRefs: $trefs")
 
-      println(s"${trefs.map(_.toInternalRow)}")
+      //println(s"${trefs.map(_.toInternalRow)}")
       trefs.map{ tref => InternalRow(tref.toInternalRow) }
     // }
     // catch {

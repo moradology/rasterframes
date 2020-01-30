@@ -31,6 +31,7 @@ import org.apache.spark.sql.sources.{BaseRelation, DataSourceRegister, RelationP
 import org.locationtech.rasterframes.model.TileDimensions
 import shapeless.tag
 import shapeless.tag.@@
+import org.locationtech.rasterframes.encoders.StandardEncoders._
 
 import scala.util.Try
 
