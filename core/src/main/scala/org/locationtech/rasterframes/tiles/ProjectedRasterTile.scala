@@ -34,7 +34,6 @@ import org.locationtech.rasterframes.encoders.{CatalystSerializer, CatalystSeria
 import org.locationtech.rasterframes.model.TileContext
 import org.locationtech.rasterframes.ref.ProjectedRasterLike
 import org.locationtech.rasterframes.ref.RasterRef.RasterRefTile
-import org.locationtech.rasterframes.encoders.StandardEncoders._
 
 /**
  * A Tile that's also like a ProjectedRaster, with delayed evaluation support.
@@ -100,6 +99,5 @@ object ProjectedRasterTile {
     }
   }
 
-  implicit val prtEncoder: ExpressionEncoder[ProjectedRasterTile] =
-    CatalystSerializerEncoder[ProjectedRasterTile](true)
+  implicit val prtEncoder: ExpressionEncoder[ProjectedRasterTile] = CatalystSerializerEncoder[ProjectedRasterTile](true)
 }

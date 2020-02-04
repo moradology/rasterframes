@@ -71,14 +71,13 @@ trait StandardColumns {
   /** Default RasterFrameLayer tile column name. */
   // This is a `def` because `TileUDT` needs to be initialized first.
   def TILE_COLUMN = col("tile").as[Tile]
-  /** Default RasterFrameLayer tile column name. */
+
+  /** Default column name for a tile with its CRS and Extent. */
+  def PROJECTED_RASTER_COLUMN = col("proj_raster").as[ProjectedRasterTile]
 
   def TENSOR_COLUMN = col("tensor").as[BufferedTensor]
 
   def PROJECTED_TENSOR_COLUMN = col("tensor_data").as[ProjectedBufferedTensor]
-
-  /** Default column name for a tile with its CRS and Extent. */
-  def PROJECTED_RASTER_COLUMN = col("proj_raster").as[ProjectedRasterTile]
 
   /** Default RasterFrameLayer `TileFeature.data` column name. */
   val TILE_FEATURE_DATA_COLUMN = col("tile_data")
