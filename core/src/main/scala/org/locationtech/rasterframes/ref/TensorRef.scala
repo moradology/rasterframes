@@ -54,6 +54,7 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
   protected lazy val grid: GridBounds =
     subgrid.getOrElse(sample.rasterExtent.gridBoundsFor(extent, true))
 
+  // This should correspond to the gridded region to which this tensor reference refers
   lazy val extent: Extent = RasterExtent(sample.extent, sample.cellSize).extentFor(grid)
 
   lazy val realizedTensor: ArrowTensor = {

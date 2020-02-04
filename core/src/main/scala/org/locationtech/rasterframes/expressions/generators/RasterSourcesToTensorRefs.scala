@@ -61,7 +61,7 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
     StructType(Seq(StructField("tensor_ref", schemaOf[TensorRef], true)))
 
   override def eval(input: InternalRow): TraversableOnce[InternalRow] = {
-    // try {
+    try {
       val data = child.eval(input).asInstanceOf[ArrayData]
 
       val rss: Array[(RasterSource, Int)] = {
@@ -84,19 +84,15 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
         subs.map { case (gb, extent) => TensorRef(rss, Some(extent), Some(gb)) }
       }.getOrElse(Seq(TensorRef(rss, None, None)))
 
-      //println(s"TensorRefs: $trefs")
-
-      //println(s"${trefs.map(_.toInternalRow)}")
       trefs.map{ tref => InternalRow(tref.toInternalRow) }
-    // }
-    // catch {
-    //   case _: Throwable => ???
-    //   // case NonFatal(ex) ⇒
-    //   //   val description = "Error fetching data for one of: " +
-    //   //     Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
-    //   //       .toOption.toSeq.flatten.mkString(", ")
-    //   //   throw new java.lang.IllegalArgumentException(description, ex)
-    // }
+    }
+    catch {
+      case NonFatal(ex) ⇒
+        val description = "Error fetching data for one of: " +
+          Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
+            .toOption.toSeq.flatten.mkString(", ")
+        throw new java.lang.IllegalArgumentException(description, ex)
+    }
   }
 }
 
