@@ -62,6 +62,6 @@ case class TensorRefToTensor(child: Expression, bufferPixels: Int) extends Unary
 }
 
 object TensorRefToTensor {
-  def apply(rr: Column, bufferPixels: Int): TypedColumn[Any, BufferedTensor] =
-    new Column(TensorRefToTensor(rr.expr, bufferPixels)).as[BufferedTensor]
+  def apply(rr: Column, bufferPixels: Int): TypedColumn[Any, ProjectedBufferedTensor] =
+    new Column(TensorRefToTensor(rr.expr, bufferPixels)).as[ProjectedBufferedTensor]
 }
