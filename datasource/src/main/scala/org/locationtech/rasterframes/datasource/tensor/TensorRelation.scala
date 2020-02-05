@@ -33,7 +33,7 @@ import org.locationtech.rasterframes.expressions.generators.{RasterSourcesToTens
 import org.locationtech.rasterframes.expressions.generators.RasterSourceToRasterRefs.bandNames
 import org.locationtech.rasterframes.expressions.transformers._
 import org.locationtech.rasterframes.model.TileDimensions
-import org.locationtech.rasterframes.tiles.ProjectedRasterTile
+import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
 
 /**
   * Constructs a Spark Relation over one or more RasterSource paths.
@@ -50,6 +50,7 @@ case class TensorRelation(
   sqlContext: SQLContext,
   rsPaths: Seq[String],
   bandIndexes: Option[Seq[Int]],
+  expandPatterns: Boolean,
   subtileDims: Option[TileDimensions],
   bufferPixels: Int,
   spatialIndexPartitions: Option[Int]
@@ -58,10 +59,14 @@ case class TensorRelation(
   protected def defaultNumPartitions: Int =
     sqlContext.sparkSession.sessionState.conf.numShufflePartitions
 
-  override def schema: StructType = StructType(Seq(StructField("tensor", BufferedTensorType, true)))
+  override def schema: StructType = StructType(Seq(
+    StructField("tensor_data", schemaOf[ProjectedBufferedTensor], true)
+  ))
+  // pre buffer
+    //StructField("tensor", BufferedTensorType, true)
 
   import sqlContext.sparkSession.implicits._
-  val catalog = rsPaths.toDF("pathPattern")
+  val catalog = rsPaths.toDF("path_pattern")
 
   override def buildScan(): RDD[Row] = {
     import sqlContext.implicits._
@@ -69,13 +74,13 @@ case class TensorRelation(
 
     val df: DataFrame = {
       val srcs =
-        PatternToRasterSources(col("pathPattern"), bandIndexes) as "rasterSource"
+        PatternToRasterSources(col("path_pattern"), bandIndexes, expandPatterns) as "raster_source"
 
       val refs =
-        RasterSourcesToTensorRefs(subtileDims, srcs) as "tensorRef"
+        RasterSourcesToTensorRefs(subtileDims, srcs) as "tensor_ref"
 
       val tens =
-        TensorRefToTensor(col("tensorRef"), bufferPixels) as "tensor"
+        TensorRefToTensor(col("tensor_ref"), bufferPixels) as "tensor_data"
 
       catalog.select(refs).select(tens)
     }
@@ -85,7 +90,7 @@ case class TensorRelation(
 
     if (spatialIndexPartitions.isDefined) {
       val indexed = df
-        .withColumn("spatial_index", XZ2Indexer(GetExtent(col("tensorRef")), GetCRS(col("tensorRef"))))
+        .withColumn("spatial_index", XZ2Indexer(GetExtent(col("tensor_ref")), GetCRS(col("tensor_ref"))))
         .repartitionByRange(numParts,$"spatial_index")
       indexed.rdd
     }

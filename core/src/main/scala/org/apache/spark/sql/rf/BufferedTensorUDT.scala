@@ -20,6 +20,7 @@
  */
 
 package org.apache.spark.sql.rf
+
 import geotrellis.raster._
 import geotrellis.vector.Extent
 import org.apache.spark.sql.catalyst.InternalRow

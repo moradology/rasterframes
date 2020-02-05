@@ -23,7 +23,7 @@ package org.locationtech.rasterframes.ref
 
 import com.typesafe.scalalogging.LazyLogging
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellType, GridBounds, Tile, ArrowTensor, BufferedTensor}
+import geotrellis.raster.{CellType, GridBounds, Tile, ArrowTensor, BufferedTensor, RasterExtent}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.rf.RasterSourceUDT
@@ -33,7 +33,8 @@ import org.locationtech.rasterframes._
 import org.locationtech.rasterframes.encoders.CatalystSerializer.{CatalystIO, _}
 import org.locationtech.rasterframes.encoders.{CatalystSerializer, CatalystSerializerEncoder}
 import org.locationtech.rasterframes.ref.RasterSource._
-import org.locationtech.rasterframes.tiles.ProjectedRasterTile
+import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
+import org.locationtech.rasterframes.expressions.transformers.PatternToRasterSources._
 
 
 /**
@@ -41,12 +42,10 @@ import org.locationtech.rasterframes.tiles.ProjectedRasterTile
  *
  * @since 8/21/18
  */
-case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent], subgrid: Option[GridBounds])
+case class TensorRef(sources: Seq[RasterSourceWithBand], subextent: Option[Extent], subgrid: Option[GridBounds])
   extends ProjectedRasterLike {
-  def sample = sources.head._1
+  def sample = sources.head.source
   def crs: CRS = sample.crs
-  def extent: Extent = subextent.getOrElse(sample.extent)
-  def projectedExtent: ProjectedExtent = ProjectedExtent(extent, crs)
   def cols: Int = grid.width
   def rows: Int = grid.height
   def cellType: CellType = sample.cellType
@@ -56,19 +55,22 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
   protected lazy val grid: GridBounds =
     subgrid.getOrElse(sample.rasterExtent.gridBoundsFor(extent, true))
 
+  // This should correspond to the gridded region to which this tensor reference refers
+  lazy val extent: Extent = RasterExtent(sample.extent, sample.cellSize).extentFor(grid)
+
   lazy val realizedTensor: ArrowTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
-    val tiles = sources.map({ case (rs, band) =>
+    val tiles = sources.map({ case RasterSourceWithBand(rs, band) =>
       rs.read(grid, Seq(band)).tile.band(0)
     })
     ArrowTensor.stackTiles(tiles)
   }
 
-  def realizedTensor(bufferPixels: Int): BufferedTensor = {
+  def realizedTensor(bufferPixels: Int): ProjectedBufferedTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
     val bufferedGrid = grid.buffer(bufferPixels)
 
-    val tiles = sources.map({ case (rs, band) =>
+    val tiles = sources.map({ case RasterSourceWithBand(rs, band) =>
       val tile = rs.read(bufferedGrid, Seq(band)).tile.band(0)
 
       val rsBounds =
@@ -77,13 +79,16 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
         TensorRef.bufferedCropBounds(rsBounds, bufferedGrid, bufferPixels)
       val cropOpts =
         geotrellis.raster.crop.Crop.Options(clamp=false)
-      val ndBuffered = 
+      val ndBuffered =
         tile.crop(cropBounds, cropOpts)
 
       ndBuffered
     })
 
-    BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
+    val bufferedTensor =
+      BufferedTensor(ArrowTensor.stackTiles(tiles), bufferPixels, bufferPixels, Some(extent))
+
+    ProjectedBufferedTensor(bufferedTensor, extent, crs)
   }
 }
 
@@ -144,7 +149,7 @@ object TensorRef extends LazyLogging {
     )
 
     override def from[R](row: R, io: CatalystIO[R]): TensorRef = TensorRef(
-      io.getSeq[(RasterSource, Int)](row, 0),
+      io.getSeq[RasterSourceWithBand](row, 0),
       if (io.isNullAt(row, 1)) None
       else Option(io.get[Extent](row, 1)),
       if (io.isNullAt(row, 2)) None

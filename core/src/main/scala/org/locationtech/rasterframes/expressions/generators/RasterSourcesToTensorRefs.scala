@@ -50,30 +50,33 @@ import scala.util.control.NonFatal
 case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[TileDimensions] = None) extends UnaryExpression
   with Generator with CodegenFallback with ExpectsInputTypes {
     import TensorRef._
+    import org.locationtech.rasterframes.expressions.transformers.PatternToRasterSources._
 
-  override def nodeName: String = "rf_raster_sources_to_tensor_ref"
+  override def nodeName: String = "rf_raster_sources_to_tensor_refs"
 
-  override def inputTypes: Seq[DataType] = Seq(ArrayType(RasterSourceType))
+  override def inputTypes: Seq[DataType] = Seq(ArrayType(schemaOf[RasterSourceWithBand]))
 
   override def dataType: DataType = ArrayType(schemaOf[TensorRef])
 
   override def elementSchema: StructType =
-    StructType(Seq(StructField("tensor", schemaOf[TensorRef], true)))
+    StructType(Seq(StructField("tensor_ref", schemaOf[TensorRef], true)))
 
   override def eval(input: InternalRow): TraversableOnce[InternalRow] = {
-    // try {
+    try {
       val data = child.eval(input).asInstanceOf[ArrayData]
 
-      val rss: Array[(RasterSource, Int)] = {
-        val result = new Array[(RasterSource, Int)](data.numElements)
-        data.foreach(RasterSourceType, (i, e) => {
-          result(i) = (RasterSourceType.deserialize(e), 0)
+      val rss: Array[RasterSourceWithBand] = {
+        // val result = new Array[(RasterSource, Int)](data.numElements)
+        val result = new Array[RasterSourceWithBand](data.numElements)
+        data.foreach(schemaOf[RasterSourceWithBand], (i, e) => {
+          // result(i) = (RasterSourceType.deserialize(e), 0)
+          result(i) = implicitly[CatalystSerializer[RasterSourceWithBand]].fromInternalRow(e.asInstanceOf[InternalRow])
         })
         result
       }
       println(s"Got arr=$rss")
 
-      val (sampleRS, _) = rss.head
+      val sampleRS = rss.head.source
 
       val maybeSubs = subtileDims.map { dims =>
         val subGB = sampleRS.layoutBounds(dims)
@@ -84,19 +87,15 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
         subs.map { case (gb, extent) => TensorRef(rss, Some(extent), Some(gb)) }
       }.getOrElse(Seq(TensorRef(rss, None, None)))
 
-      println(s"TensorRefs: $trefs")
-
-      println(s"${trefs.map(_.toInternalRow)}")
       trefs.map{ tref => InternalRow(tref.toInternalRow) }
-    // }
-    // catch {
-    //   case _: Throwable => ???
-    //   // case NonFatal(ex) ⇒
-    //   //   val description = "Error fetching data for one of: " +
-    //   //     Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
-    //   //       .toOption.toSeq.flatten.mkString(", ")
-    //   //   throw new java.lang.IllegalArgumentException(description, ex)
-    // }
+    }
+    catch {
+      case NonFatal(ex) ⇒
+        val description = "Error fetching data for one of: " +
+          Try(children.map(c => RasterSourceType.deserialize(c.eval(input))))
+            .toOption.toSeq.flatten.mkString(", ")
+        throw new java.lang.IllegalArgumentException(description, ex)
+    }
   }
 }
 
