@@ -104,6 +104,6 @@ object PatternToRasterSources {
   implicit val rsArrayEncoder: Encoder[Array[RasterSource]] =
     ExpressionEncoder[Array[RasterSource]]()
 
-  def apply(rasterURI: Column, bands: Option[Seq[Int]]=None, expandPatterns: Boolean=false): TypedColumn[Any, Array[RasterSource]] =
+  def apply(rasterURI: Column, bands: Option[Seq[Int]]=None, expandPatterns: Boolean): TypedColumn[Any, Array[RasterSource]] =
     new Column(new PatternToRasterSources(rasterURI.expr, bands, expandPatterns)).as[Array[RasterSource]]
 }
