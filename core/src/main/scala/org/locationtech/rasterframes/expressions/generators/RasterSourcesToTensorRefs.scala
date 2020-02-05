@@ -50,10 +50,11 @@ import scala.util.control.NonFatal
 case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[TileDimensions] = None) extends UnaryExpression
   with Generator with CodegenFallback with ExpectsInputTypes {
     import TensorRef._
+    import org.locationtech.rasterframes.expressions.transformers.PatternToRasterSources._
 
-  override def nodeName: String = "rf_raster_sources_to_tensor_ref"
+  override def nodeName: String = "rf_raster_sources_to_tensor_refs"
 
-  override def inputTypes: Seq[DataType] = Seq(ArrayType(RasterSourceType))
+  override def inputTypes: Seq[DataType] = Seq(ArrayType(schemaOf[RasterSourceWithBand]))
 
   override def dataType: DataType = ArrayType(schemaOf[TensorRef])
 
@@ -64,16 +65,18 @@ case class RasterSourcesToTensorRefs(child: Expression, subtileDims: Option[Tile
     try {
       val data = child.eval(input).asInstanceOf[ArrayData]
 
-      val rss: Array[(RasterSource, Int)] = {
-        val result = new Array[(RasterSource, Int)](data.numElements)
-        data.foreach(RasterSourceType, (i, e) => {
-          result(i) = (RasterSourceType.deserialize(e), 0)
+      val rss: Array[RasterSourceWithBand] = {
+        // val result = new Array[(RasterSource, Int)](data.numElements)
+        val result = new Array[RasterSourceWithBand](data.numElements)
+        data.foreach(schemaOf[RasterSourceWithBand], (i, e) => {
+          // result(i) = (RasterSourceType.deserialize(e), 0)
+          result(i) = implicitly[CatalystSerializer[RasterSourceWithBand]].fromInternalRow(e.asInstanceOf[InternalRow])
         })
         result
       }
       println(s"Got arr=$rss")
 
-      val (sampleRS, _) = rss.head
+      val sampleRS = rss.head.source
 
       val maybeSubs = subtileDims.map { dims =>
         val subGB = sampleRS.layoutBounds(dims)

@@ -50,6 +50,7 @@ case class TensorRelation(
   sqlContext: SQLContext,
   rsPaths: Seq[String],
   bandIndexes: Option[Seq[Int]],
+  expandPatterns: Boolean,
   subtileDims: Option[TileDimensions],
   bufferPixels: Int,
   spatialIndexPartitions: Option[Int]
@@ -73,7 +74,7 @@ case class TensorRelation(
 
     val df: DataFrame = {
       val srcs =
-        PatternToRasterSources(col("path_pattern"), bandIndexes) as "raster_source"
+        PatternToRasterSources(col("path_pattern"), bandIndexes, expandPatterns) as "raster_source"
 
       val refs =
         RasterSourcesToTensorRefs(subtileDims, srcs) as "tensor_ref"

@@ -247,6 +247,7 @@ def _tensor_reader(
         tile_dimensions=(256, 256),
         buffer_pixels=0,
         spatial_index_partitions=None,
+        expand_pattern=False,
         **options):
     """
     Returns a Spark DataFrame from raster data files specified by URIs.
@@ -298,6 +299,8 @@ def _tensor_reader(
         tds.PATHS_PARAM(): to_csv(path),
         tds.BUFFER_PIXELS_PARAM(): str(buffer_pixels if buffer_pixels >= 0 else 0)
     })
+
+    options.update({tds.EXPAND_PATTERNS(): str(expand_pattern).lower()})
 
     return df_reader \
         .format("tensor") \

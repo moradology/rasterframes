@@ -43,7 +43,8 @@ class TensorDataSource extends DataSourceRegister with RelationProvider {
     val spatialIndex = parameters.spatialIndex
     val rasterPaths = parameters.paths
     val bufferPixels = parameters.bufferPixels
-    TensorRelation(sqlContext, rasterPaths, bandIndexes, tiling, bufferPixels, spatialIndex)
+    val expandPatterns = parameters.expandPatterns
+    TensorRelation(sqlContext, rasterPaths, bandIndexes, expandPatterns, tiling, bufferPixels, spatialIndex)
   }
 }
 
@@ -52,6 +53,7 @@ object TensorDataSource {
   final val PATHS_PARAM = "paths"
   final val BAND_INDEXES_PARAM = "band_indexes"
   final val TILE_DIMS_PARAM = "tile_dimensions"
+  final val EXPAND_PATTERNS = "expand_patterns"
   final val LAZY_TILES_PARAM = "lazy_tiles"
   final val BUFFER_PIXELS_PARAM = "tile_buffer"
   final val SPATIAL_INDEX_PARTITIONS_PARAM = "spatial_index_partitions"
@@ -82,6 +84,11 @@ object TensorDataSource {
       .get(PATHS_PARAM)
       .map(tokenize(_).filter(_.nonEmpty).toSeq)
       .getOrElse(Seq.empty)
+
+    def expandPatterns: Boolean = parameters
+      .get(EXPAND_PATTERNS)
+      .map{ str => str.trim.toLowerCase == "true" || str.trim == "1" }
+      .getOrElse(false)
   }
 
   /** Mixin for adding extension methods on DataFrameReader for TensorDataSource-like readers. */
@@ -105,6 +112,11 @@ object TensorDataSource {
     def withBandIndexes(bandIndexes: Int*): TaggedReader =
       tag[ReaderTag][DataFrameReader](
         reader.option(TensorDataSource.BAND_INDEXES_PARAM, bandIndexes.mkString(","))
+      )
+
+    def usePatternExpansion(flag: Boolean = true): TaggedReader =
+      tag[ReaderTag][DataFrameReader](
+        reader.option(TensorDataSource.EXPAND_PATTERNS, flag.toString)
       )
 
     def withTileDimensions(cols: Int, rows: Int): TaggedReader =

@@ -26,7 +26,7 @@ import java.net.URI
 import com.typesafe.scalalogging.Logger
 import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback
 import org.apache.spark.sql.catalyst.expressions.{ExpectsInputTypes, Expression, UnaryExpression}
-import org.apache.spark.sql.types.{DataType, StringType, ArrayType}
+import org.apache.spark.sql.types.{DataType, IntegerType, StringType, ArrayType, StructType, StructField}
 import org.apache.spark.sql.{Column, TypedColumn}
 import org.apache.spark.unsafe.types.UTF8String
 import org.locationtech.rasterframes.RasterSourceType
@@ -47,7 +47,7 @@ import java.net.URI
  *
  * @since 5/4/18
  */
-case class PatternToRasterSources(override val child: Expression, bands: Option[Seq[Int]])
+case class PatternToRasterSources(override val child: Expression, bands: Option[Seq[Int]], expandPatterns: Boolean)
   extends UnaryExpression with ExpectsInputTypes with CodegenFallback {
     import PatternToRasterSources._
   @transient protected lazy val logger = Logger(LoggerFactory.getLogger(getClass.getName))
@@ -57,21 +57,53 @@ case class PatternToRasterSources(override val child: Expression, bands: Option[
 
   override def inputTypes = Seq(StringType)
 
-  override def dataType: DataType = ArrayType(RasterSourceType)
+  override def dataType: DataType = ArrayType(schemaOf[RasterSourceWithBand])
 
   override protected def nullSafeEval(input: Any): Any =  {
     val pattern = input.asInstanceOf[UTF8String].toString
-    val expanded: Seq[String] = bands.map(_.map(pattern.format(_))).getOrElse(Seq(pattern))
-    val sources: Seq[RasterSource] = expanded.map{ str => RasterSource(URI.create(str)) }
+    val sources: Seq[(String, Int)] =
+      if (expandPatterns) {
+        bands                             // do printf-style replacement
+          .map(_.map(pattern.format(_)))  // ... on all supplied bands
+          .getOrElse(Seq(0).map(pattern.format(_))) // ... or default to zero
+          .map((_, 0)) // Always read 0 band
+      } else {
+        bands
+          .getOrElse(Seq(0))
+          .map((pattern, _))
+      }
 
-    new GenericArrayData(sources.map(RasterSourceType.serialize(_)))
+    val expanded = sources.map{ case (str, bnd) => RasterSourceWithBand(RasterSource(URI.create(str)), bnd) }
+
+    new GenericArrayData(expanded.map(_.toInternalRow))
   }
 }
 
 object PatternToRasterSources {
+  case class RasterSourceWithBand(source: RasterSource, band: Int)
+
+  implicit val bandedRSSerializer: CatalystSerializer[RasterSourceWithBand] =
+    new CatalystSerializer[RasterSourceWithBand] {
+      import org.apache.spark.sql.rf.RasterSourceUDT._
+
+      override val schema: StructType =
+        StructType(Seq(
+          StructField("source", RasterSourceType, false),
+          StructField("band", IntegerType, false)
+        ))
+
+      override def to[R](t: RasterSourceWithBand, io: CatalystIO[R]): R = io.create(
+        io.to(t.source),
+        t.band
+)
+
+      override def from[R](row: R, io: CatalystIO[R]): RasterSourceWithBand =
+        RasterSourceWithBand(io.get[RasterSource](row, 0), io.getInt(row, 1))
+    }
+
   implicit val rsArrayEncoder: Encoder[Array[RasterSource]] =
     ExpressionEncoder[Array[RasterSource]]()
 
-  def apply(rasterURI: Column, bands: Option[Seq[Int]]=None): TypedColumn[Any, Array[RasterSource]] =
-    new Column(new PatternToRasterSources(rasterURI.expr, bands)).as[Array[RasterSource]]
+  def apply(rasterURI: Column, bands: Option[Seq[Int]]=None, expandPatterns: Boolean=false): TypedColumn[Any, Array[RasterSource]] =
+    new Column(new PatternToRasterSources(rasterURI.expr, bands, expandPatterns)).as[Array[RasterSource]]
 }

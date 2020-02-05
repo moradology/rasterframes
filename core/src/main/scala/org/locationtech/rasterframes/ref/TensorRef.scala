@@ -34,6 +34,7 @@ import org.locationtech.rasterframes.encoders.CatalystSerializer.{CatalystIO, _}
 import org.locationtech.rasterframes.encoders.{CatalystSerializer, CatalystSerializerEncoder}
 import org.locationtech.rasterframes.ref.RasterSource._
 import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
+import org.locationtech.rasterframes.expressions.transformers.PatternToRasterSources._
 
 
 /**
@@ -41,9 +42,9 @@ import org.locationtech.rasterframes.tensors.ProjectedBufferedTensor
  *
  * @since 8/21/18
  */
-case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent], subgrid: Option[GridBounds])
+case class TensorRef(sources: Seq[RasterSourceWithBand], subextent: Option[Extent], subgrid: Option[GridBounds])
   extends ProjectedRasterLike {
-  def sample = sources.head._1
+  def sample = sources.head.source
   def crs: CRS = sample.crs
   def cols: Int = grid.width
   def rows: Int = grid.height
@@ -59,7 +60,7 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
 
   lazy val realizedTensor: ArrowTensor = {
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
-    val tiles = sources.map({ case (rs, band) =>
+    val tiles = sources.map({ case RasterSourceWithBand(rs, band) =>
       rs.read(grid, Seq(band)).tile.band(0)
     })
     ArrowTensor.stackTiles(tiles)
@@ -69,7 +70,7 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
     //RasterRef.log.trace(s"Fetching $extent ($grid) from band $bandIndex of $sample")
     val bufferedGrid = grid.buffer(bufferPixels)
 
-    val tiles = sources.map({ case (rs, band) =>
+    val tiles = sources.map({ case RasterSourceWithBand(rs, band) =>
       val tile = rs.read(bufferedGrid, Seq(band)).tile.band(0)
 
       val rsBounds =
@@ -78,10 +79,10 @@ case class TensorRef(sources: Seq[(RasterSource, Int)], subextent: Option[Extent
         TensorRef.bufferedCropBounds(rsBounds, bufferedGrid, bufferPixels)
       val cropOpts =
         geotrellis.raster.crop.Crop.Options(clamp=false)
-      val ndBuffered = 
+      val ndBuffered =
         tile.crop(cropBounds, cropOpts)
 
-      ndBuffered 
+      ndBuffered
     })
 
     val bufferedTensor =
@@ -148,7 +149,7 @@ object TensorRef extends LazyLogging {
     )
 
     override def from[R](row: R, io: CatalystIO[R]): TensorRef = TensorRef(
-      io.getSeq[(RasterSource, Int)](row, 0),
+      io.getSeq[RasterSourceWithBand](row, 0),
       if (io.isNullAt(row, 1)) None
       else Option(io.get[Extent](row, 1)),
       if (io.isNullAt(row, 2)) None
